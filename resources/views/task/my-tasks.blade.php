@@ -1,0 +1,236 @@
+@extends('layouts.app')
+
+@section('title', '我的任务列表')
+
+@section('content')
+<h1 class="mb-4">我的任务列表</h1>
+
+<!-- 未执行任务列表区 -->
+<div class="card mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="fa fa-tasks me-2"></i>未执行任务 ({{ $pendingTasks->count() }})</h5>
+    </div>
+    <div class="card-body">
+        @if($pendingTasks->count() > 0)
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>项目名称</th>
+                    <th>项目状态</th>
+                    <th>任务类型</th>
+                    <th>任务状态</th>
+                    <th>起始日期</th>
+                    <th>截止日期</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($pendingTasks as $task)
+                <tr>
+                    <td><a href="{{ route('project.show', $task->project) }}">{{ $task->project->name }}</a></td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->project->status->color() }}; color: white;">
+                            {{ $task->project->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->taskType->name ?? '-' }}</td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->status->color() }}; color: white;">
+                            {{ $task->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->start_date }}</td>
+                    <td>{{ $task->end_date }}</td>
+                    <td>
+                        @if($task->canUploadFile() || $task->canApplyExtension())
+                            @if($task->canUploadFile())
+                            <a href="{{ route('task.upload', $task) }}" class="btn btn-sm btn-primary">上传文件</a>
+                            @endif
+                            @if($task->canApplyExtension())
+                            <a href="{{ route('task.apply-extension', $task) }}" class="btn btn-sm btn-warning">延期申请</a>
+                            @endif
+                        @elseif($task->project->isInactive())
+                        <span class="text-muted small">项目已暂停</span>
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <p class="text-muted text-center py-3">暂无未执行的任务</p>
+        @endif
+    </div>
+</div>
+
+<!-- 待审核任务列表区 -->
+<div class="card mb-4">
+    <div class="card-header bg-warning text-white">
+        <h5 class="mb-0"><i class="fa fa-hourglass-half me-2"></i>待审核任务 ({{ $forAuditTasks->count() }})</h5>
+    </div>
+    <div class="card-body">
+        @if($forAuditTasks->count() > 0)
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>项目名称</th>
+                    <th>项目状态</th>
+                    <th>任务类型</th>
+                    <th>任务状态</th>
+                    <th>文件名</th>
+                    <th>文件版本号</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($forAuditTasks as $task)
+                @php
+                    $file = $task->files()->where('status', 'pending')->first();
+                @endphp
+                <tr>
+                    <td><a href="{{ route('project.show', $task->project) }}">{{ $task->project->name }}</a></td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->project->status->color() }}; color: white;">
+                            {{ $task->project->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->taskType->name ?? '-' }}</td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->status->color() }}; color: white;">
+                            {{ $task->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $file ? $file->original_name : '-' }}</td>
+                    <td>{{ $file ? 'v' . $file->version : '-' }}</td>
+                    <td>
+                        @if($file)
+                        <a href="{{ route('file.preview', $file) }}" class="btn btn-sm btn-info" target="_blank">预览</a>
+                        <a href="{{ route('file.download', $file) }}" class="btn btn-sm btn-success">下载</a>
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <p class="text-muted text-center py-3">暂无待审核的任务</p>
+        @endif
+    </div>
+</div>
+
+<!-- 已完成任务列表区 -->
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fa fa-check-circle me-2"></i>已完成任务 ({{ $completedTasks->count() }})</h5>
+    </div>
+    <div class="card-body">
+        @if($completedTasks->count() > 0)
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>项目名称</th>
+                    <th>项目状态</th>
+                    <th>任务类型</th>
+                    <th>任务状态</th>
+                    <th>文件名</th>
+                    <th>文件版本号</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($completedTasks as $task)
+                @php
+                    $file = $task->files()->where('status', 'approved')->first();
+                @endphp
+                <tr>
+                    <td><a href="{{ route('project.show', $task->project) }}">{{ $task->project->name }}</a></td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->project->status->color() }}; color: white;">
+                            {{ $task->project->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->taskType->name ?? '-' }}</td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->status->color() }}; color: white;">
+                            {{ $task->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $file ? $file->original_name : '-' }}</td>
+                    <td>{{ $file ? 'v' . $file->version : '-' }}</td>
+                    <td>
+                        @if($file)
+                        <a href="{{ route('file.preview', $file) }}" class="btn btn-sm btn-info" target="_blank">预览</a>
+                        <a href="{{ route('file.download', $file) }}" class="btn btn-sm btn-success">下载</a>
+                        @if(!$task->project->isInactive())
+                        <a href="{{ route('task.update-file', $task) }}" class="btn btn-sm btn-primary">更新</a>
+                        @endif
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <p class="text-muted text-center py-3">暂无已完成的任务</p>
+        @endif
+    </div>
+</div>
+
+<!-- 逾期/进行中任务列表区 -->
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fa fa-exclamation-triangle me-2"></i>逾期/进行中任务 ({{ $overdueTasks->count() }})</h5>
+    </div>
+    <div class="card-body">
+        @if($overdueTasks->count() > 0)
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>项目名称</th>
+                    <th>项目状态</th>
+                    <th>任务类型</th>
+                    <th>任务状态</th>
+                    <th>起始日期</th>
+                    <th>截止日期</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($overdueTasks as $task)
+                <tr>
+                    <td><a href="{{ route('project.show', $task->project) }}">{{ $task->project->name }}</a></td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->project->status->color() }}; color: white;">
+                            {{ $task->project->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->taskType->name ?? '-' }}</td>
+                    <td>
+                        <span class="badge" style="background-color: {{ $task->status->color() }}; color: white;">
+                            {{ $task->status->label() }}
+                        </span>
+                    </td>
+                    <td>{{ $task->start_date }}</td>
+                    <td>{{ $task->end_date }}</td>
+                    <td>
+                        @if($task->canUploadFile() || $task->canApplyExtension())
+                            @if($task->canUploadFile())
+                            <a href="{{ route('task.upload', $task) }}" class="btn btn-sm btn-primary">上传文件</a>
+                            @endif
+                            @if($task->canApplyExtension())
+                            <a href="{{ route('task.apply-extension', $task) }}" class="btn btn-sm btn-warning">延期申请</a>
+                            @endif
+                        @elseif($task->project->isInactive())
+                        <span class="text-muted small">项目已暂停</span>
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <p class="text-muted text-center py-3">暂无逾期或进行中的任务</p>
+        @endif
+    </div>
+</div>
+@endsection

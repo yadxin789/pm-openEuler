@@ -1,0 +1,115 @@
+-- 查看所有数据库
+SHOW DATABASES;
+
+-- 创建数据库
+CREATE DATABASE 数据库名;
+
+-- 删除数据库
+DROP DATABASE 数据库名;
+
+-- 选择数据库
+USE 数据库名;
+
+-- 查看数据库详细信息
+SHOW CREATE DATABASE 数据库名;
+表操作
+
+-- 查看当前数据库中的所有表
+SHOW TABLES;
+
+-- 创建表
+CREATE TABLE 表名 (
+列名1 数据类型 [约束],
+列名2 数据类型 [约束]
+);
+
+-- 查看表结构
+DESCRIBE 表名;
+SHOW COLUMNS FROM 表名;
+
+-- 删除表
+DROP TABLE 表名;
+
+-- 修改表结构
+ALTER TABLE 表名 ADD 列名 数据类型 [约束];
+ALTER TABLE 表名 DROP 列名;
+ALTER TABLE 表名 MODIFY 列名 数据类型 [约束];
+数据操作
+
+-- 插入数据
+INSERT INTO 表名 (列1, 列2) VALUES (值1, 值2);
+
+-- 查询数据
+SELECT 列1, 列2 FROM 表名 WHERE 条件;
+
+-- 更新数据
+UPDATE 表名 SET 列1 = 值1 WHERE 条件;
+
+-- 删除数据
+DELETE FROM 表名 WHERE 条件;
+用户与权限管理
+
+-- 创建用户
+CREATE USER '用户名'@'主机' IDENTIFIED BY '密码';
+
+-- 授权用户
+GRANT 权限 ON 数据库名.* TO '用户名'@'主机';
+
+-- 查看用户权限
+SHOW GRANTS FOR '用户名'@'主机';
+
+-- 移除权限
+REVOKE 权限 ON 数据库名.* FROM '用户名'@'主机';
+
+-- 刷新权限
+FLUSH PRIVILEGES;
+事务管理
+
+-- 开始事务
+START TRANSACTION;
+
+-- 提交事务
+COMMIT;
+
+-- 回滚事务
+ROLLBACK;
+
+-- 设置事务隔离级别
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+退出 MySQL
+
+-- 退出 MySQL 客户端
+EXIT;
+
+---导出数据库
+mysqldump -u root -p -d -R --triggers --default-character-set=utf8mb4 数据库名 > /usr/local/mysql/struct_2025.sql
+
+Windows 安装 MySQL 系统服务（CMD 管理员模式）
+1. 先以管理员身份打开 CMD
+2. 进入 MySQL bin 目录
+cmd
+cd /d 你的mysql根目录\bin
+示例：
+cmd
+cd /d D:\mysql-8.0.36-winx64\bin
+3. 安装注册系统服务
+cmd
+mysqld --install
+默认服务名：MySQL
+4. 初始化数据库（首次必须）
+cmd
+mysqld --initialize --console
+记下最后一行临时初始密码
+5. 启动服务
+cmd
+net start mysql
+6. 登录改密码
+cmd
+mysql -u root -p
+粘贴临时密码登录，执行改密：
+sql
+alter user 'root'@'localhost' identified by '新密码';
+常用卸载服务（重装用）
+cmd
+net stop mysql
+mysqld --remove

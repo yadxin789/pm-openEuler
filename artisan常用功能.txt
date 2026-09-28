@@ -1,0 +1,90 @@
+启动内置服务器运行 Laravel 提供的 Artisan 命令 serve，即可启动内置的 PHP 开发服务器：
+bash
+php artisan serve
+访问项目命令执行成功后，终端会显示服务器的访问地址，默认是：
+plaintext
+Laravel development server started: http://127.0.0.1:8000
+打开浏览器，访问上述地址即可查看你的 Laravel 项目。
+可选参数：
+指定端口：如果 8000 端口被占用，可以通过 --port 指定其他端口，例如：
+bash
+php artisan serve --port=8080
+指定主机：默认绑定 127.0.0.1，若需要外部设备访问（如同一局域网内的手机），可绑定 0.0.0.0：
+bash
+php artisan serve --host=0.0.0.0 --port=8000
+注意事项：
+内置服务器仅用于开发环境，不可用于生产环境。
+确保已安装 PHP（且版本符合 Laravel 要求），并在终端中可直接执行 php 命令。
+启动前建议先执行 composer install 安装依赖，并配置好 .env 文件（可通过 .env.example 复制生成）。
+请提供artisan常用功能列表。
+Laravel 的 artisan 是命令行工具，提供了大量实用命令简化开发流程。以下是常用功能分类及命令列表：
+一、项目基础操作
+命令	功能
+php artisan serve	启动内置 PHP 开发服务器（默认 http://127.0.0.1:8000）
+php artisan tinker	启动交互式命令行（可直接执行 PHP/ Laravel 代码，如操作模型）
+php artisan clear-compiled	清除编译后的类文件
+php artisan optimize	优化项目（生成自动加载文件、缓存配置等，Laravel 5.5+ 已简化）
+php artisan down	进入维护模式（显示 503 页面）
+php artisan up	退出维护模式
+二、路由相关
+命令	功能
+php artisan route:list	查看所有注册的路由列表（含方法、URI、控制器等）
+php artisan route:cache	缓存路由（生产环境提速，需重启服务器生效）
+php artisan route:clear	清除路由缓存
+三、配置相关
+命令	功能
+php artisan config:cache	缓存配置文件（合并所有配置为单个文件，生产环境用）
+php artisan config:clear	清除配置缓存
+php artisan env	查看当前环境（如 local、production）
+四、数据库与迁移
+命令	功能
+php artisan make:migration [name]	创建数据库迁移文件（如 create_users_table）
+php artisan migrate	执行所有未运行的迁移（创建表结构）
+php artisan migrate:rollback	回滚最后一次迁移操作
+php artisan migrate:reset	回滚所有迁移（清空数据库表）
+php artisan migrate:fresh	先删除所有表，再重新执行所有迁移（开发环境常用）
+php artisan migrate:status	查看迁移执行状态（哪些已运行，哪些未运行）
+五、数据填充与工厂
+命令	功能
+php artisan make:seeder [name]	创建数据填充器（如 UsersTableSeeder）
+php artisan db:seed	执行填充器（默认运行 DatabaseSeeder）
+php artisan db:seed --class=[SeederName]	指定执行某个填充器
+php artisan make:factory [name]	创建模型工厂（用于生成测试数据，如 UserFactory）
+六、模型与控制器
+命令	功能
+php artisan make:model [name]	创建 Eloquent 模型（如 User）
+php artisan make:model [name] -m	创建模型并同时生成迁移文件（-m 是 --migration 缩写）
+php artisan make:controller [name]	创建控制器（如 UserController）
+php artisan make:controller [name] --resource	创建资源控制器（含增删改查 7 个方法）
+php artisan make:controller [name] -m [Model]	创建控制器并关联模型（如 UserController 关联 User 模型）
+七、中间件、请求与事件
+命令	功能
+php artisan make:middleware [name]	创建中间件（如 CheckAge）
+php artisan make:request [name]	创建表单请求验证类（如 StoreUserRequest）
+php artisan make:event [name]	创建事件类（如 OrderCreated）
+php artisan make:listener [name]	创建事件监听器（如 SendOrderNotification）
+php artisan make:policy [name]	创建权限策略类（如 PostPolicy，用于模型权限控制）
+八、视图与组件
+命令	功能
+php artisan make:view [name]	创建 Blade 视图文件（如 pages/home）
+php artisan make:component [name]	创建 Blade 组件（如 Button，生成类文件和视图）
+php artisan make:component [name] --inline	创建内联组件（视图代码写在类文件中，不生成单独视图）
+九、缓存操作
+命令	功能
+php artisan cache:clear
+php artisan optimize:clear	清除所有缓存（含应用缓存、路由缓存、配置缓存等）
+php artisan cache:forget [key]	删除指定缓存键的值
+php artisan cache:table	生成缓存表迁移文件（用于数据库缓存驱动）
+十、其他实用命令
+命令	功能
+php artisan make:command [name]	创建自定义 Artisan 命令（如 SendEmails）
+php artisan key:generate	生成应用密钥（.env 中的 APP_KEY，用于加密）
+php artisan storage:link	创建 public/storage 软链接（关联 storage/app/public 目录）
+php artisan vendor:publish	发布扩展包的配置 / 视图 / 迁移文件（如 Laravel UI、Passport 等）
+查看所有命令
+执行以下命令可列出所有可用的 Artisan 命令及说明：
+bash
+php artisan list
+如需查看某个命令的详细用法（如参数、选项），可使用：
+bash
+php artisan help [command]  # 例如：php artisan help make:model
