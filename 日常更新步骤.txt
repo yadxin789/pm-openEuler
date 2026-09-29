@@ -1,0 +1,15 @@
+## 日常使用（今后就两步）
+
+**本地改完代码后：**
+#powershell
+```
+Set-Location "E:\my-pm\pm-server-openEuler"
+git add -A && git commit -m "改动说明" && git push
+```
+
+**服务器一键同步：**
+
+```
+#bash
+cd /var/www/pm && ./deploy-views.sh
+```

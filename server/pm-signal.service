@@ -1,0 +1,17 @@
+[Unit]
+Description=PM Voice Conference Swoole Signal Server
+After=network.target mysqld.service
+
+[Service]
+Type=simple
+User=pmadmin
+Group=pmadmin
+WorkingDirectory=/var/www/pm
+ExecStart=/usr/bin/php /var/www/pm/server/bin/signal.php
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/pm-signal.log
+StandardError=append:/var/log/pm-signal.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,7 @@
 {{--
     项目属性页（Tab）统一导航条
     用法：@include('project.partials.project-tabs', ['project' => $project, 'activeTab' => 'overview'])
-    可用 activeTab 值：overview / gantt / history / logs / collab / chat
+    可用 activeTab 值：overview / gantt / history / logs / collab / chat / voice
 --}}
 @php
     $projectTabs = [
@@ -11,6 +11,7 @@
         'logs'     => ['label' => '项目日志', 'route' => route('project.logs', $project),        'icon' => 'fa-list-alt'],
         'collab'   => ['label' => '协同办公', 'route' => route('project.collab.index', $project), 'icon' => 'fa-users'],
         'chat'     => ['label' => '聊天室',   'route' => route('messages.index', $project->id),  'icon' => 'fa-comments'],
+        'voice'    => ['label' => '电话会议', 'route' => route('project.voice.index', $project),  'icon' => 'fa-phone'],
     ];
     $activeTab = $activeTab ?? 'overview';
 @endphp

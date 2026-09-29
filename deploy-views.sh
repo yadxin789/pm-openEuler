@@ -47,8 +47,27 @@ fi
 cd "$APP_DIR"
 
 # ---------- 1. 拉取最新代码（--ff-only 避免服务器上产生合并冲突） ----------
+OLD_HEAD=$(git rev-parse HEAD)
 echo "==> git pull --ff-only origin $BRANCH"
 git pull --ff-only origin "$BRANCH"
+NEW_HEAD=$(git rev-parse HEAD)
+
+# ---------- 1.5 信令服务 / 配置变更时自动重启 pm-signal ----------
+if [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+    CHANGED=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD" -- server/bin/signal.php server/pm-signal.service config/voice.php)
+    if [ -n "$CHANGED" ]; then
+        echo "==> 检测到电话会议信令相关文件变更，重启 pm-signal:"
+        echo "$CHANGED" | sed 's/^/    - /'
+        systemctl restart pm-signal 2>/dev/null || echo "    [WARN] pm-signal 未运行（首次部署需先跑 ./deploy-voice.sh）"
+    fi
+
+    # ---------- 1.6 迁移文件变更时自动跑 migrate ----------
+    MIGRATIONS_CHANGED=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD" -- database/migrations/ | wc -l)
+    if [ "$MIGRATIONS_CHANGED" -gt 0 ]; then
+        echo "==> 检测到迁移文件变更，执行 migrate --force..."
+        php artisan migrate --force
+    fi
+fi
 
 # ---------- 2. 修正目录属主（与 PHP-FPM 运行用户一致） ----------
 if [ "$REOWN" = "1" ]; then

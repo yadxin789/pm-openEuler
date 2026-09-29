@@ -23,6 +23,7 @@ use App\Http\Controllers\WecomFileController;
 use App\Http\Controllers\UserWecomController;
 use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\CollabDocumentController;
+use App\Http\Controllers\VoiceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
@@ -141,7 +142,18 @@ Route::middleware('auth')->group(function () {
         Route::post('/{project}/collab', [CollabDocumentController::class, 'store'])->name('collab.store');
         Route::get('/{project}/collab/{doc}/open', [CollabDocumentController::class, 'open'])->name('collab.open');
         Route::delete('/{project}/collab/{doc}', [CollabDocumentController::class, 'destroy'])->name('collab.destroy');
+
+        // 电话会议（纯音频 + OnlyOffice 文稿演示）
+        Route::get('/{project}/voice', [VoiceController::class, 'index'])->name('voice.index');
+        Route::get('/{project}/voice/token', [VoiceController::class, 'issueToken'])->name('voice.token');
+        Route::get('/{project}/voice/members', [VoiceController::class, 'members'])->name('voice.members');
+        Route::get('/{project}/voice/doc-config/{doc}', [VoiceController::class, 'docConfig'])->name('voice.doc-config');
+        Route::get('/{project}/voice/history', [VoiceController::class, 'history'])->name('voice.history');
     });
+
+    // Swoole 信令服务回调（内网，后续用 secret 校验）
+    Route::post('voice/hooks/enter', [VoiceController::class, 'hookEnter'])->name('voice.hooks.enter');
+    Route::post('voice/hooks/leave', [VoiceController::class, 'hookLeave'])->name('voice.hooks.leave');
     
     // 项目履历路由
     Route::prefix('history')->name('history.')->group(function () {
