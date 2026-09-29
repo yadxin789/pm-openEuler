@@ -30,7 +30,8 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/pm}"
 # 默认拉取分支（可用环境变量覆盖，如 BRANCH=main）
 BRANCH="${BRANCH:-master}"
-REOWN="${REOWN:-1}"   # 1=修正属主为 nginx:nginx，0=跳过
+REOWN="${REOWN:-1}"   # 1=修正目录属主，0=跳过
+PHP_USER="${PHP_USER:-pmadmin}"   # PHP-FPM 实际运行用户（请按服务器实际配置设置，例：pmadmin / nginx / www-data）
 CACHE="${CACHE:-1}"   # 1=清理并重建视图缓存，0=仅清理不重建
 
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -51,8 +52,8 @@ git pull --ff-only origin "$BRANCH"
 
 # ---------- 2. 修正目录属主（与 PHP-FPM 运行用户一致） ----------
 if [ "$REOWN" = "1" ]; then
-    echo "==> 修正目录属主为 nginx:nginx"
-    chown -R nginx:nginx "$APP_DIR"
+    echo "==> 修正目录属主为 $PHP_USER:$PHP_USER（PHP-FPM 运行用户）"
+    chown -R "$PHP_USER:$PHP_USER" "$APP_DIR"
 fi
 
 # ---------- 3. 清理视图缓存 ----------
