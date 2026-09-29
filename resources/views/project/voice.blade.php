@@ -74,7 +74,10 @@
 @endsection
 
 @section('scripts')
-<script src="{{ asset('vendor/janus/janus.js') }}"></script>
+<script>
+// Janus 容器未启动时 janus.js 会 404，不阻塞信令/文档功能
+if (window.Janus) { /* ok */ } else { console.warn('[voice] janus.js 未加载，音频功能暂不可用'); }
+</script>
 <script>
 window.VOICE_STATE = {
     projectId: {{ $project->id }},
