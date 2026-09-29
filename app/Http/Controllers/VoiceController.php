@@ -84,13 +84,13 @@ class VoiceController extends Controller
         $this->assertProjectMember($project);
 
         $participants = $project->participants();
-        $members = $participants->map(function ($u) {
+        $members = $participants->map(function ($u) use ($project) {
             return [
                 'id' => $u->id,
                 'name' => $u->name,
                 'username' => $u->username,
                 'avatar' => $u->avatar,
-                'is_host' => $u->id === $u->projectsCreated()->where('id', request()->route('project')->id)->exists() ? true : false,
+                'is_host' => (int) $u->id === (int) $project->creator_id,
             ];
         });
 
