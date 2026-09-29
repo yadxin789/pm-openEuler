@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * 鐢佃瘽浼氳 Swoole WebSocket 淇′护鏈嶅姟锛堢嫭绔嬪父椹昏繘绋嬶級
  *
@@ -76,7 +76,8 @@ $server->on('open', function (Server $srv, $request) use (&$connections, &$rooms
     // 骞挎挱鎴愬憳鍒楄〃
     broadcastRoom($srv, $rid, $connections, $rooms);
 
-    // HTTP 鍥炶皟 Laravel 鍐欐棩蹇楋紙fire and forget锛?    httpPostAsync($pmInternal . '/voice/hooks/enter', [
+    // HTTP 鍥炶皟 Laravel 鍐欐棩蹇楋紙fire and forget锛\?
+    httpPostAsync($pmInternal . '/voice/hooks/enter', [
         'room_id' => $rid,
         'user_id' => $uid,
     ]);
