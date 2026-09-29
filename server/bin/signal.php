@@ -1,25 +1,20 @@
-<?php
+﻿<?php
 /**
- * 电话会议 Swoole WebSocket 信令服务（独立常驻进程）
+ * 鐢佃瘽浼氳 Swoole WebSocket 淇′护鏈嶅姟锛堢嫭绔嬪父椹昏繘绋嬶級
  *
- * 职责：
- *   - 浏览器 wss 握手，校验 VoiceTokenService 签的短期 token
- *   - 内存维护 room_id => [fd => user_info] 映射
- *   - 广播成员上下线、presenter 变更、文档切换、翻页同步
- *   - presenter_assign/revoke 二次校验发送者必须是 host（项目创建人）
- *   - 连接关闭时若断线者是 presenter，自动回落给 host
- *   - 通过 HTTP 回调 Laravel /voice/hooks/{enter,leave} 写会议日志
- *
- * 启动：php /var/www/pm/server/bin/signal.php
- * 由 systemd pm-signal.service 托管，运行属主 pmadmin。
- */
+ * 鑱岃矗锛? *   - 娴忚鍣?wss 鎻℃墜锛屾牎楠?VoiceTokenService 绛剧殑鐭湡 token
+ *   - 鍐呭瓨缁存姢 room_id => [fd => user_info] 鏄犲皠
+ *   - 骞挎挱鎴愬憳涓婁笅绾裤€乸resenter 鍙樻洿銆佹枃妗ｅ垏鎹€佺炕椤靛悓姝? *   - presenter_assign/revoke 浜屾鏍￠獙鍙戦€佽€呭繀椤绘槸 host锛堥」鐩垱寤轰汉锛? *   - 杩炴帴鍏抽棴鏃惰嫢鏂嚎鑰呮槸 presenter锛岃嚜鍔ㄥ洖钀界粰 host
+ *   - 閫氳繃 HTTP 鍥炶皟 Laravel /voice/hooks/{enter,leave} 鍐欎細璁棩蹇? *
+ * 鍚姩锛歱hp /var/www/pm/server/bin/signal.php
+ * 鐢?systemd pm-signal.service 鎵樼锛岃繍琛屽睘涓?pmadmin銆? */
 
 use App\Models\VoiceRoom;
 use App\Services\VoiceTokenService;
 use Swoole\WebSocket\Frame;
 use Swoole\WebSocket\Server;
 
-// ---------- bootstrap Laravel（复用模型与 token service） ----------
+// ---------- bootstrap Laravel锛堝鐢ㄦā鍨嬩笌 token service锛?----------
 $baseDir = dirname(__DIR__, 2);
 require $baseDir . '/vendor/autoload.php';
 $app = require $baseDir . '/bootstrap/app.php';
@@ -27,7 +22,7 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 $tokenSvc = app(VoiceTokenService::class);
 
-// ---------- 内存状态 ----------
+// ---------- 鍐呭瓨鐘舵€?----------
 // connections[fd] = ['uid'=>int,'pid'=>int,'rid'=>int,'name'=>string,'is_host'=>bool]
 $connections = [];
 // rooms[rid] = [fd=>true]
@@ -36,8 +31,7 @@ $rooms = [];
 $host = config('voice.signal_listen', '0.0.0.0');
 $port = (int) config('voice.signal_port', 3001);
 
-// Laravel 内网回调地址（Swoole 容器/进程访问 PM API）
-$pmInternal = rtrim(env('VOICE_PM_INTERNAL_URL', 'http://127.0.0.1'), '/');
+// Laravel 鍐呯綉鍥炶皟鍦板潃锛圫woole 瀹瑰櫒/杩涚▼璁块棶 PM API锛?$pmInternal = rtrim(env('VOICE_PM_INTERNAL_URL', 'http://127.0.0.1'), '/');
 
 $server = new Server($host, $port);
 
@@ -74,16 +68,15 @@ $server->on('open', function (Server $srv, $request) use (&$connections, &$rooms
         'uid' => $uid,
         'pid' => $pid,
         'rid' => $rid,
-        'name' => $user?->name ?? ("用户{$uid}"),
+        'name' => $user?->name ?? ("鐢ㄦ埛{$uid}"),
         'is_host' => $uid === (int) $room->host_id,
     ];
     $rooms[$rid][$fd] = true;
 
-    // 广播成员列表
+    // 骞挎挱鎴愬憳鍒楄〃
     broadcastRoom($srv, $rid, $connections, $rooms);
 
-    // HTTP 回调 Laravel 写日志（fire and forget）
-    httpPostAsync($pmInternal . '/voice/hooks/enter', [
+    // HTTP 鍥炶皟 Laravel 鍐欐棩蹇楋紙fire and forget锛?    httpPostAsync($pmInternal . '/voice/hooks/enter', [
         'room_id' => $rid,
         'user_id' => $uid,
     ]);
@@ -103,7 +96,7 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
 
     switch ($msg['type']) {
         case 'presenter_apply':
-            // 听众举手：转发给 host
+            // 鍚紬涓炬墜锛氳浆鍙戠粰 host
             sendToHost($srv, $rid, [
                 'type' => 'presenter_apply',
                 'from_uid' => $me['uid'],
@@ -112,7 +105,7 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
             break;
 
         case 'presenter_assign':
-            // host 指派某人为 presenter
+            // host 鎸囨淳鏌愪汉涓?presenter
             if (!$me['is_host']) {
                 pushOne($srv, $fd, ['type' => 'error', 'reason' => 'not_host']);
                 return;
@@ -138,7 +131,7 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
             break;
 
         case 'doc_select':
-            // host 或 presenter 切换演示文档
+            // host 鎴?presenter 鍒囨崲婕旂ず鏂囨。
             $room = VoiceRoom::find($rid);
             if ($me['uid'] !== (int) $room->host_id && $me['uid'] !== (int) $room->current_presenter_id) {
                 pushOne($srv, $fd, ['type' => 'error', 'reason' => 'not_permitted']);
@@ -151,17 +144,17 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
             break;
 
         case 'slide_sync':
-            // presenter 翻页/滚动位置同步
+            // presenter 缈婚〉/婊氬姩浣嶇疆鍚屾
             $room = VoiceRoom::find($rid);
             if ($me['uid'] !== (int) $room->current_presenter_id) {
-                return; // 非 presenter 静默丢弃
+                return; // 闈?presenter 闈欓粯涓㈠純
             }
             broadcast($srv, $rid, [
                 'type' => 'slide_sync',
                 'from_uid' => $me['uid'],
                 'page' => $msg['page'] ?? null,
                 'scroll' => $msg['scroll'] ?? null,
-            ], $connections, $rooms, $fd); // 不回给 presenter 自己
+            ], $connections, $rooms, $fd); // 涓嶅洖缁?presenter 鑷繁
             break;
     }
 });
@@ -174,7 +167,7 @@ $server->on('close', function (Server $srv, $fd) use (&$connections, &$rooms, $p
     $rid = $me['rid'];
     unset($connections[$fd], $rooms[$rid][$fd]);
 
-    // 若断线者是 presenter，自动回落 host
+    // 鑻ユ柇绾胯€呮槸 presenter锛岃嚜鍔ㄥ洖钀?host
     $room = VoiceRoom::find($rid);
     if ($room && (int) $room->current_presenter_id === (int) $me['uid']) {
         $room->update(['current_presenter_id' => $room->host_id]);
@@ -195,14 +188,14 @@ $server->on('close', function (Server $srv, $fd) use (&$connections, &$rooms, $p
 
 $server->start();
 
-// ---------- 辅助函数 ----------
+// ---------- 杈呭姪鍑芥暟 ----------
 
 function broadcast(Server $srv, int $rid, array $payload, array $connections, array $rooms, ?int $excludeFd = null): void
 {
     $data = json_encode($payload);
     foreach ($rooms[$rid] ?? [] as $fd => $_) {
         if ($fd === $excludeFd) continue;
-        if ($srv->isConnected($fd)) {
+        if ($srv->isEstablished($fd)) {
             $srv->push($fd, $data);
         }
     }
@@ -236,12 +229,12 @@ function sendToHost(Server $srv, int $rid, array $payload, array $connections, a
 
 function pushOne(Server $srv, int $fd, array $payload): void
 {
-    if ($srv->isConnected($fd)) {
+    if ($srv->isEstablished($fd)) {
         $srv->push($fd, json_encode($payload));
     }
 }
 
-/** 异步 POST 到 Laravel（不阻塞信令循环） */
+/** 寮傛 POST 鍒?Laravel锛堜笉闃诲淇′护寰幆锛?*/
 function httpPostAsync(string $url, array $body): void
 {
     $ch = curl_init($url);
