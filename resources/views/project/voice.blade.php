@@ -58,7 +58,7 @@
             <iframe id="doc-frame" style="display:none; width:100%; height:100%; border:0; background:#fff;"></iframe>
         </div>
 
-        <div class="p-2 border-top bg-white d-flex justify-content-center gap-3">
+        <div class="p-2 border-top bg-white d-flex justify-content-center gap-3 align-items-center">
             <button id="btn-mic" class="btn btn-secondary" disabled>
                 <i class="fa fa-microphone"></i> 静音
             </button>
@@ -71,13 +71,11 @@
         </div>
     </div>
 </div>
+
+<div id="remote-audios"></div>
 @endsection
 
 @section('scripts')
-<script>
-// Janus 容器未启动时 janus.js 会 404，不阻塞信令/文档功能
-if (window.Janus) { /* ok */ } else { console.warn('[voice] janus.js 未加载，音频功能暂不可用'); }
-</script>
 <script>
 window.VOICE_STATE = {
     projectId: {{ $project->id }},
@@ -93,12 +91,17 @@ let allMembers = [];
 let onlineUids = new Set();
 let docEditor = null;
 let followingPresenter = true;
+let localStream = null;
+const peers = {}; // uid -> RTCPeerConnection
 
-// ---------- 1. 连接 Swoole 信令 ----------
+// 局域网 ICE 配置：不需要 STUN/TURN
+const rtcConfig = { iceServers: [] };
+
+// ---------- 1. 信令 ----------
 async function connectSignal() {
     const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/token`).then(r => r.json());
-    const url = `${r.signal_ws}?token=${encodeURIComponent(r.token)}`;
     window._voiceConf = r;
+    const url = `${r.signal_ws}?token=${encodeURIComponent(r.token)}`;
     ws = new WebSocket(url);
     ws.onopen = () => console.log('[voice] signal ws open');
     ws.onclose = () => console.log('[voice] signal ws closed');
@@ -116,6 +119,14 @@ function handleSignal(msg) {
         case 'room_state':
             onlineUids = new Set(msg.members.map(m => m.uid));
             renderMembers();
+            // Mesh: 新成员加入，旧成员主动发起 offer
+            if (localStream) {
+                msg.members.forEach(m => {
+                    if (m.uid !== VOICE_STATE.currentUserId && !peers[m.uid]) {
+                        createPeer(m.uid, true);
+                    }
+                });
+            }
             break;
         case 'presenter_changed':
             VOICE_STATE.currentPresenterId = msg.presenter_uid;
@@ -131,21 +142,90 @@ function handleSignal(msg) {
         case 'slide_sync':
             if (followingPresenter) applySlideSync(msg);
             break;
+        case 'webrtc_offer':
+            handleOffer(msg);
+            break;
+        case 'webrtc_answer':
+            handleAnswer(msg);
+            break;
+        case 'webrtc_ice':
+            handleIce(msg);
+            break;
         case 'error':
             console.error('[voice]', msg.reason);
             break;
     }
 }
 
-// ---------- 3. 成员列表 ----------
+// ---------- 3. Mesh P2P WebRTC ----------
+async function createPeer(uid, isInitiator) {
+    if (peers[uid]) return peers[uid];
+    const pc = new RTCPeerConnection(rtcConfig);
+    peers[uid] = pc;
+
+    // 发本地麦克风
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    // 收到远端音频
+    pc.ontrack = (e) => {
+        let audio = $(`audio-${uid}`);
+        if (!audio) {
+            audio = document.createElement('audio');
+            audio.id = `audio-${uid}`;
+            audio.autoplay = true;
+            $('remote-audios').appendChild(audio);
+        }
+        audio.srcObject = e.streams[0];
+    };
+
+    pc.onicecandidate = (e) => {
+        if (e.candidate) {
+            sendSignal({ type: 'webrtc_ice', to_uid: uid, candidate: e.candidate });
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+            delete peers[uid];
+            const a = $(`audio-${uid}`);
+            if (a) a.remove();
+        }
+    };
+
+    if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal({ type: 'webrtc_offer', to_uid: uid, sdp: pc.localDescription });
+    }
+    return pc;
+}
+
+async function handleOffer(msg) {
+    const uid = msg.from_uid;
+    const pc = await createPeer(uid, false);
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    sendSignal({ type: 'webrtc_answer', to_uid: uid, sdp: pc.localDescription });
+}
+
+async function handleAnswer(msg) {
+    const pc = peers[msg.from_uid];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+}
+
+async function handleIce(msg) {
+    const pc = peers[msg.from_uid];
+    if (pc && msg.candidate) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+}
+
+// ---------- 4. 成员列表 ----------
 async function loadAllMembers() {
     try {
         const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/members`).then(r => r.json());
         allMembers = r.members || [];
         renderMembers();
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function renderMembers() {
@@ -189,9 +269,8 @@ function updatePresenterLabel() {
     badge.textContent = m ? m.name : ('用户' + VOICE_STATE.currentPresenterId);
 }
 
-// ---------- 4. 演示权 ----------
+// ---------- 5. 演示权 ----------
 function assignPresenter(uid) { sendSignal({ type: 'presenter_assign', to_uid: uid }); }
-
 function showApplyBanner(uid, name) {
     const b = $('apply-banner');
     b.innerHTML = `${escapeHtml(name)} 申请演示
@@ -201,11 +280,10 @@ function showApplyBanner(uid, name) {
 }
 function dismissApply() { $('apply-banner').classList.add('d-none'); }
 function approveApply(uid) { dismissApply(); assignPresenter(uid); }
-
 $('btn-revoke-presenter')?.addEventListener('click', () => sendSignal({ type: 'presenter_revoke' }));
 $('btn-apply-presenter')?.addEventListener('click', () => sendSignal({ type: 'presenter_apply' }));
 
-// ---------- 5. OnlyOffice 文档 ----------
+// ---------- 6. OnlyOffice 文档 ----------
 async function loadDoc(docId) {
     if (!docId) {
         $('doc-frame').style.display = 'none';
@@ -258,8 +336,14 @@ $('btn-follow')?.addEventListener('click', () => {
     $('btn-follow').disabled = true;
 });
 
-// ---------- 6. 加入会议 ----------
+// ---------- 7. 加入/离开会议 ----------
 $('btn-call').addEventListener('click', async () => {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (e) {
+        alert('无法访问麦克风：' + e.message);
+        return;
+    }
     await connectSignal();
     $('btn-call').disabled = true;
     $('btn-call').innerHTML = '<i class="fa fa-phone me-1"></i>会议中';
@@ -271,6 +355,7 @@ $('btn-mic').addEventListener('click', () => {
     const btn = $('btn-mic');
     const muted = btn.dataset.muted !== '1';
     btn.dataset.muted = muted ? '1' : '0';
+    if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !muted);
     btn.innerHTML = muted ? '<i class="fa fa-microphone-slash"></i> 取消静音' : '<i class="fa fa-microphone"></i> 静音';
 });
 

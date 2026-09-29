@@ -157,6 +157,23 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
                 'scroll' => $msg['scroll'] ?? null,
             ], $connections, $rooms, $fd); // 涓嶅洖缁?presenter 鑷繁
             break;
+
+        case 'webrtc_offer':
+        case 'webrtc_answer':
+        case 'webrtc_ice':
+            // Mesh P2P: forward to target peer
+            $toUid = (int) ($msg['to_uid'] ?? 0);
+            foreach ($rooms[$rid] ?? [] as $peerFd => $_) {
+                if (!isset($connections[$peerFd])) continue;
+                if ((int) $connections[$peerFd]['uid'] === $toUid) {
+                    $payload = $msg;
+                    $payload['from_uid'] = $me['uid'];
+                    $payload['from_name'] = $me['name'];
+                    pushOne($srv, $peerFd, $payload);
+                    break;
+                }
+            }
+            break;
     }
 });
 
