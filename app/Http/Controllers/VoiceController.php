@@ -140,7 +140,7 @@ class VoiceController extends Controller
         if (!in_array($ext, $allowed)) {
             return response()->json(['error' => '不支持的文件格式，仅支持 docx/xlsx/pptx/pdf'], 422);
         }
-        $path = $request->file('file')->store('voice_demo', 'local');
+        $path = $request->file('file')->store('voice_demo', 'file_repository');
         $doc = CollabDocument::create([
             'project_id' => $project->id,
             'name' => pathinfo($request->file('file')->getClientOriginalName(), PATHINFO_FILENAME),
