@@ -76,6 +76,7 @@
 @endsection
 
 @section('scripts')
+<script type="text/javascript" src="{{ rtrim(config('collab.server_url'), '/') }}/web-apps/apps/api/documents/api.js"></script>
 <script>
 window.VOICE_STATE = {
     projectId: {{ $project->id }},
@@ -248,7 +249,7 @@ function renderMembers() {
             <div class="ms-2 flex-grow-1" style="font-size:13px;">
                 <div class="fw-bold">${escapeHtml(m.name)}
                     ${m.is_host ? ' <span class="badge bg-success" style="font-size:10px;">主持</span>' : ''}
-                    ${m.id === VOICE_STATE.currentPresenterId ? ' <span class="badge bg-primary" style="font-size:10px;">演示</span>' : ''}</div>
+                    ${m.id === VOICE_STATE.currentPresenterId ? ' <span class="badge bg-danger" style="font-size:10px;">演示权</span>' : ''}</div>
             </div>
             ${VOICE_STATE.isHost && online && m.id !== VOICE_STATE.currentUserId && m.id !== VOICE_STATE.currentPresenterId ? `
                 <button class="btn btn-sm btn-outline-primary" onclick="assignPresenter(${m.id})" title="设为演示者">

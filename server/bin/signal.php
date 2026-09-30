@@ -143,6 +143,12 @@ $server->on('message', function (Server $srv, Frame $frame) use (&$connections, 
                 'type' => 'doc_selected',
                 'doc_id' => (int) ($msg['doc_id'] ?? 0),
             ], $connections, $rooms);
+            // 选文档者自动成为 presenter
+            VoiceRoom::where('id', $rid)->update(['current_presenter_id' => $me['uid']]);
+            broadcast($srv, $rid, [
+                'type' => 'presenter_changed',
+                'presenter_uid' => $me['uid'],
+            ], $connections, $rooms);
             break;
 
         case 'slide_sync':
