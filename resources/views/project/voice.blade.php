@@ -361,8 +361,11 @@ $('file-upload').addEventListener('change', async (e) => {
     const fd = new FormData();
     fd.append('file', file);
     try {
-        const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/upload-demo`, { method: 'POST', body: fd })
-            .then(r => r.json());
+        const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/upload-demo`, {
+            method: 'POST',
+            body: fd,
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }
+        }).then(r => r.json());
         if (r.error) { alert(r.error); return; }
         sendSignal({ type: 'doc_select', doc_id: r.id });
         loadDoc(r.id);
