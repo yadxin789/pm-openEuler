@@ -39,7 +39,7 @@
                 <select id="doc-select" class="form-select form-select-sm" style="width:260px;">
                     <option value="">-- 选择演示文档 --</option>
                     @foreach($documents as $doc)
-                        <option value="p:{{ $doc->id }}">[项目] {{ $doc->name }}.{{ $doc->ext }}</option>
+                        <option value="p:{{ $doc['id'] }}">[项目] {{ $doc['name'] }}.{{ $doc['ext'] }}</option>
                     @endforeach
                 </select>
                 <input type="file" id="file-upload" accept=".docx,.xlsx,.pptx,.pdf,.doc,.xls,.ppt" style="display:none;">
