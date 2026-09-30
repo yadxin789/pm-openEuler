@@ -31,7 +31,8 @@ $rooms = [];
 $host = config('voice.signal_listen', '0.0.0.0');
 $port = (int) config('voice.signal_port', 3001);
 
-// Laravel 鍐呯綉鍥炶皟鍦板潃锛圫woole 瀹瑰櫒/杩涚▼璁块棶 PM API锛?$pmInternal = rtrim(env('VOICE_PM_INTERNAL_URL', 'http://127.0.0.1'), '/');
+// Laravel internal callback URL
+$pmInternal = rtrim(env('VOICE_PM_INTERNAL_URL', 'http://127.0.0.1'), '/');
 
 $server = new Server($host, $port);
 
