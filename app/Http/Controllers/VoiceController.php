@@ -47,16 +47,9 @@ class VoiceController extends Controller
             ->get(['id', 'name', 'extension'])
             ->map(fn($d) => ['type' => 'project', 'id' => $d->id, 'name' => $d->name, 'ext' => $d->extension]);
 
-        // 资料库（全部可见 + 当前部门可见）
-        $user = auth()->user();
-        $libDocs = DepartmentFile::where('visibility', 'all')
-            ->orWhere(fn($q) => $q->where('visibility','department')->where('department_id', $user->department_id))
-            ->whereIn('extension', $ooExt)
-            ->orderBy('name')
-            ->get(['id','name','extension'])
-            ->map(fn($d) => ['type' => 'library', 'id' => $d->id, 'name' => $d->name, 'ext' => $d->extension]);
-
-        $documents = $projectDocs->concat($libDocs)->values();
+        // 资料库（后续再接，department_files 字段名不同）
+        // $libDocs = collect();
+        $documents = $projectDocs;
 
         return view('project.voice', [
             'project' => $project,
