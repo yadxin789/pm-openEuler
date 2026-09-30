@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CollabDocument;
+use App\Models\DepartmentFile;
 use App\Models\Project;
 use App\Models\VoiceParticipant;
 use App\Models\VoiceRoom;
@@ -35,10 +36,27 @@ class VoiceController extends Controller
         $room = VoiceRoom::forProject($project);
         $isHost = $project->creator_id === auth()->id();
 
-        $documents = CollabDocument::where('project_id', $project->id)
+        // OnlyOffice 支持的格式
+        $ooExt = ['docx','doc','xlsx','xls','pptx','ppt','pdf'];
+
+        // 项目文档
+        $projectDocs = CollabDocument::where('project_id', $project->id)
             ->whereNull('deleted_at')
+            ->whereIn('extension', $ooExt)
             ->orderBy('name')
-            ->get(['id', 'name', 'extension']);
+            ->get(['id', 'name', 'extension'])
+            ->map(fn($d) => ['type' => 'project', 'id' => $d->id, 'name' => $d->name, 'ext' => $d->extension]);
+
+        // 资料库（全部可见 + 当前部门可见）
+        $user = auth()->user();
+        $libDocs = DepartmentFile::where('visibility', 'all')
+            ->orWhere(fn($q) => $q->where('visibility','department')->where('department_id', $user->department_id))
+            ->whereIn('extension', $ooExt)
+            ->orderBy('name')
+            ->get(['id','name','extension'])
+            ->map(fn($d) => ['type' => 'library', 'id' => $d->id, 'name' => $d->name, 'ext' => $d->extension]);
+
+        $documents = $projectDocs->concat($libDocs)->values();
 
         return view('project.voice', [
             'project' => $project,
@@ -100,17 +118,46 @@ class VoiceController extends Controller
     /**
      * 生成某篇文档的只读 OnlyOffice editor config（前端用来初始化 iframe）。
      */
-    public function docConfig(Project $project, CollabDocument $doc, CollabOfficeService $office)
+    public function docConfig(Project $project, CollabDocument $doc, CollabOfficeService $office, Request $request)
     {
         $this->assertProjectMember($project);
         abort_unless($doc->project_id === $project->id, 404);
 
-        $config = $office->buildEditorConfig($doc, auth()->user(), false);
+        $canEdit = (bool) $request->query('edit', false);
+        $config = $office->buildEditorConfig($doc, auth()->user(), $canEdit);
 
         return response()->json([
             'server_url' => $office->serverUrl(),
             'config' => $config,
+            'download_url' => asset('storage/' . $doc->path),
         ]);
+    }
+
+    /**
+     * 上传本地演示文件，创建临时 CollabDocument（7 天后自动清理）。
+     */
+    public function uploadDemoFile(Project $project, Request $request)
+    {
+        $this->assertProjectMember($project);
+        $allowed = ['docx','xlsx','pptx','pdf','doc','xls','ppt'];
+        $data = $request->validate([
+            'file' => 'required|file|max:26214400',
+        ]);
+        $ext = strtolower($request->file('file')->getClientOriginalExtension());
+        if (!in_array($ext, $allowed)) {
+            return response()->json(['error' => '不支持的文件格式，仅支持 docx/xlsx/pptx/pdf'], 422);
+        }
+        $path = $request->file('file')->store('voice_demo', 'local');
+        $doc = CollabDocument::create([
+            'project_id' => $project->id,
+            'name' => pathinfo($request->file('file')->getClientOriginalName(), PATHINFO_FILENAME),
+            'extension' => $ext,
+            'path' => 'app/' . $path,
+            'uploader_id' => auth()->id(),
+            'is_temp_demo' => true,
+            'expires_at' => Carbon::now()->addDays(7),
+        ]);
+        return response()->json(['id' => $doc->id]);
     }
 
     /**

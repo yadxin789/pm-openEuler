@@ -39,9 +39,20 @@
                 <select id="doc-select" class="form-select form-select-sm" style="width:260px;">
                     <option value="">-- 选择演示文档 --</option>
                     @foreach($documents as $doc)
-                        <option value="{{ $doc->id }}">{{ $doc->name }}.{{ $doc->extension }}</option>
+                        <option value="p:{{ $doc->id }}">[项目] {{ $doc->name }}.{{ $doc->ext }}</option>
                     @endforeach
                 </select>
+                <input type="file" id="file-upload" accept=".docx,.xlsx,.pptx,.pdf,.doc,.xls,.ppt" style="display:none;">
+                <button id="btn-upload" class="btn btn-sm btn-outline-secondary" title="上传本地文件演示">
+                    <i class="fa fa-upload"></i> 上传
+                </button>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="edit-mode">
+                    <label class="form-check-label small" for="edit-mode">编辑模式</label>
+                </div>
+                <button id="btn-download" class="btn btn-sm btn-outline-secondary" disabled>
+                    <i class="fa fa-download"></i> 下载
+                </button>
                 @if($isHost)
                     <button id="btn-revoke-presenter" class="btn btn-sm btn-outline-danger">
                         <i class="fa fa-undo me-1"></i>收回演示权
@@ -285,17 +296,25 @@ $('btn-revoke-presenter')?.addEventListener('click', () => sendSignal({ type: 'p
 $('btn-apply-presenter')?.addEventListener('click', () => sendSignal({ type: 'presenter_apply' }));
 
 // ---------- 6. OnlyOffice 文档 ----------
+let currentDocId = null;
+let currentDownloadUrl = null;
+
 async function loadDoc(docId) {
     if (!docId) {
         $('doc-frame').style.display = 'none';
         $('doc-empty-tip').style.display = '';
+        $('btn-download').disabled = true;
         return;
     }
-    const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/doc-config/${docId}`).then(r => r.json());
+    currentDocId = docId;
+    const editMode = $('edit-mode').checked ? 1 : 0;
+    const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/doc-config/${docId}?edit=${editMode}`).then(r => r.json());
     $('doc-empty-tip').style.display = 'none';
     $('doc-frame').style.display = '';
     if (docEditor) { docEditor.destroy(); docEditor = null; }
     docEditor = new DocsAPI.DocEditor('doc-frame', { ...r.config, width: '100%', height: '100%' });
+    currentDownloadUrl = r.download_url;
+    $('btn-download').disabled = !currentDownloadUrl;
     startSlideWatcher();
 }
 
@@ -327,9 +346,36 @@ function applySlideSync(msg) {
 }
 
 $('doc-select').addEventListener('change', (e) => {
-    const docId = parseInt(e.target.value);
+    const v = e.target.value;
+    if (!v) return;
+    const docId = parseInt(v.split(':')[1]);
     sendSignal({ type: 'doc_select', doc_id: docId });
     loadDoc(docId);
+});
+
+// 上传本地文件
+$('btn-upload').addEventListener('click', () => $('file-upload').click());
+$('file-upload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const r = await fetch(`/project/${VOICE_STATE.projectId}/voice/upload-demo`, { method: 'POST', body: fd })
+            .then(r => r.json());
+        if (r.error) { alert(r.error); return; }
+        sendSignal({ type: 'doc_select', doc_id: r.id });
+        loadDoc(r.id);
+    } catch (err) { alert('上传失败: ' + err.message); }
+    e.target.value = '';
+});
+
+// 编辑模式切换：重新加载文档
+$('edit-mode').addEventListener('change', () => { if (currentDocId) loadDoc(currentDocId); });
+
+// 下载当前文档
+$('btn-download').addEventListener('click', () => {
+    if (currentDownloadUrl) window.open(currentDownloadUrl, '_blank');
 });
 
 $('btn-follow')?.addEventListener('click', () => {

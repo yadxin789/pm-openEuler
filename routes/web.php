@@ -148,6 +148,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{project}/voice/token', [VoiceController::class, 'issueToken'])->name('voice.token');
         Route::get('/{project}/voice/members', [VoiceController::class, 'members'])->name('voice.members');
         Route::get('/{project}/voice/doc-config/{doc}', [VoiceController::class, 'docConfig'])->name('voice.doc-config');
+        Route::post('/{project}/voice/upload-demo', [VoiceController::class, 'uploadDemoFile'])->name('voice.upload-demo');
         Route::get('/{project}/voice/history', [VoiceController::class, 'history'])->name('voice.history');
     });
 
