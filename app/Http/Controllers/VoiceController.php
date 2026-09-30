@@ -129,7 +129,7 @@ class VoiceController extends Controller
         return response()->json([
             'server_url' => $office->serverUrl(),
             'config' => $config,
-            'download_url' => asset('storage/' . $doc->path),
+            'download_url' => url('/collab/download/' . $doc->id . '?k=' . urlencode($doc->doc_key)),
         ]);
     }
 
@@ -152,8 +152,10 @@ class VoiceController extends Controller
             'project_id' => $project->id,
             'name' => pathinfo($request->file('file')->getClientOriginalName(), PATHINFO_FILENAME),
             'extension' => $ext,
-            'path' => 'app/' . $path,
-            'uploader_id' => auth()->id(),
+            'storage_path' => $path,
+            'doc_key' => \Illuminate\Support\Str::random(32),
+            'size' => $request->file('file')->getSize(),
+            'created_by' => auth()->id(),
             'is_temp_demo' => true,
             'expires_at' => Carbon::now()->addDays(7),
         ]);
