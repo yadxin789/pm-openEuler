@@ -91,20 +91,26 @@
 </div>
 
 <style>
-    /* 文档类型选择器：未选中 = 白底浅灰边深字；hover 边框显色；选中 = 实心色块 + 白字 */
+    /* 文档类型选择器：未选中 = 灰底灰字；hover 边框显色；选中 = 实心彩色 + 白字（单选互斥） */
     .template-option {
-        border: 2px solid #dee2e6 !important;
-        background-color: #fff !important;
-        color: #212529 !important;
+        border: 2px solid #ced4da !important;
+        background-color: #eef1f3 !important;
+        color: #6c757d !important;
+        opacity: .75;
         transition: all .15s ease-in-out;
     }
+    .template-option i { color: #868e96 !important; }
     .template-option:hover {
         transform: translateY(-1px);
+        opacity: 1;
     }
     .template-option.btn-outline-primary:hover { border-color: #0d6efd !important; }
     .template-option.btn-outline-success:hover { border-color: #198754 !important; }
     .template-option.btn-outline-danger:hover  { border-color: #dc3545 !important; }
 
+    .template-option.active {
+        opacity: 1;
+    }
     .template-option.active.btn-outline-primary {
         background-color: #0d6efd !important;
         border-color: #0d6efd !important;
@@ -126,17 +132,17 @@
     .template-option.active i { color: #fff !important; }
 </style>
 <script>
-    document.querySelectorAll('.template-option').forEach(function (label) {
-        var input = label.querySelector('input[type="radio"]');
-        function sync() {
-            if (input.checked) {
-                label.classList.add('active');
-            } else {
-                label.classList.remove('active');
-            }
-        }
-        label.addEventListener('click', function () { setTimeout(sync, 0); });
-        sync();
+    // 单选互斥：任一 radio 变化时同步所有按钮的 active 状态
+    var options = document.querySelectorAll('.template-option');
+    function syncAll() {
+        options.forEach(function (label) {
+            var input = label.querySelector('input[type="radio"]');
+            label.classList.toggle('active', input.checked);
+        });
+    }
+    options.forEach(function (label) {
+        label.querySelector('input[type="radio"]').addEventListener('change', syncAll);
     });
+    syncAll();
 </script>
 @endsection
