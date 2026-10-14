@@ -55,8 +55,11 @@ Route::middleware('auth')->group(function () {
 
         // 回收站：全系统软删除内容的恢复与彻底删除（仅管理员）
         Route::get('/collab-trash', [AdminTrashController::class, 'index'])->name('trash');
-        Route::post('/collab-trash/{type}/{id}/restore', [AdminTrashController::class, 'restore'])->name('trash.restore');
-        Route::delete('/collab-trash/{type}/{id}', [AdminTrashController::class, 'forceDelete'])->name('trash.force-delete');
+        // 批量路由必须注册在 /{id} 之前，否则 restore-batch 会被当作 id 匹配
+        Route::post('/collab-trash/{type}/restore-batch', [AdminTrashController::class, 'restoreBatch'])->name('trash.restore-batch');
+        Route::delete('/collab-trash/{type}/force-delete-batch', [AdminTrashController::class, 'forceDeleteBatch'])->name('trash.force-delete-batch');
+        Route::post('/collab-trash/{type}/{id}/restore', [AdminTrashController::class, 'restore'])->name('trash.restore')->whereNumber('id');
+        Route::delete('/collab-trash/{type}/{id}', [AdminTrashController::class, 'forceDelete'])->name('trash.force-delete')->whereNumber('id');
         
         Route::get('/users', [AdminController::class, 'users'])->name('users');
         Route::get('/users/create', [AdminController::class, 'createUser'])->name('users.create');

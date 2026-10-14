@@ -135,6 +135,116 @@ class AdminTrashController extends Controller
     }
 
     /**
+     * 批量恢复：只恢复勾选的记录，不影响其他内容。
+     */
+    public function restoreBatch(Request $request, string $type)
+    {
+        $config = $this->resolveType($type);
+
+        $ids = $this->selectedIds($request);
+        if (empty($ids)) {
+            return redirect()
+                ->route('admin.trash', ['type' => $type])
+                ->with('error', '请至少勾选一条记录');
+        }
+
+        $items = $config['model']::onlyTrashed()->whereIn('id', $ids)->orderBy('id')->get();
+        $names = [];
+
+        foreach ($items as $item) {
+            $names[] = $this->displayName($type, $item, $config['field']);
+            TrashService::restore($item);
+        }
+
+        if (!empty($names)) {
+            OperationLogHelper::log('回收站', '批量恢复', sprintf(
+                '管理员批量恢复%s %d 条：%s',
+                $config['label'],
+                count($names),
+                $this->summarizeNames($names)
+            ));
+        }
+
+        return redirect()
+            ->route('admin.trash', ['type' => $type])
+            ->with('success', sprintf(
+                '已恢复 %d 条%s%s',
+                count($names),
+                $config['label'],
+                count($names) < count($ids) ? '（部分记录已不存在，已跳过）' : ''
+            ));
+    }
+
+    /**
+     * 批量彻底删除（不可逆，物理文件一并清理）。仅管理员可用。
+     */
+    public function forceDeleteBatch(Request $request, string $type)
+    {
+        $config = $this->resolveType($type);
+
+        $ids = $this->selectedIds($request);
+        if (empty($ids)) {
+            return redirect()
+                ->route('admin.trash', ['type' => $type])
+                ->with('error', '请至少勾选一条记录');
+        }
+
+        $items = $config['model']::onlyTrashed()->whereIn('id', $ids)->orderBy('id')->get();
+        $names = [];
+
+        foreach ($items as $item) {
+            $names[] = $this->displayName($type, $item, $config['field']);
+            TrashService::forceDelete($item);
+        }
+
+        if (!empty($names)) {
+            OperationLogHelper::log('回收站', '批量彻底删除', sprintf(
+                '管理员批量彻底删除%s %d 条：%s，物理文件已一并清理',
+                $config['label'],
+                count($names),
+                $this->summarizeNames($names)
+            ));
+        }
+
+        return redirect()
+            ->route('admin.trash', ['type' => $type])
+            ->with('success', sprintf(
+                '已彻底删除 %d 条%s%s',
+                count($names),
+                $config['label'],
+                count($names) < count($ids) ? '（部分记录已不存在，已跳过）' : ''
+            ));
+    }
+
+    /**
+     * 取出批量提交勾选的 ID：去重、只保留正整数，单次最多 200 条。
+     */
+    protected function selectedIds(Request $request): array
+    {
+        $ids = [];
+
+        foreach ((array) $request->input('ids', []) as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        return array_slice(array_values($ids), 0, 200);
+    }
+
+    /**
+     * 生成操作日志里的名称摘要（最多列 5 条，其余折叠为条数）。
+     */
+    protected function summarizeNames(array $names): string
+    {
+        $head = array_slice($names, 0, 5);
+        $more = count($names) - count($head);
+
+        return implode('、', $head) . ($more > 0 ? " 等 {$more} 条" : '');
+    }
+
+    /**
      * 校验分类是否合法。
      */
     protected function resolveType(string $type): array
