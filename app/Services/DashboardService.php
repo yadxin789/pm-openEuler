@@ -66,23 +66,26 @@ class DashboardService
         $completedDelayed = 0;
         $inProgress = 0;
         $paused = 0;
+        $notStarted = 0;
 
         foreach ($projects as $project) {
             $statusClass = get_class($project->status);
             if ($statusClass === \App\States\Project\Completed::class) {
-                if ($project->end_date && Carbon::parse($project->end_date)->isBefore(Carbon::parse($project->updated_at ?? now()))) {
-                    $completedDelayed++;
-                } else {
-                    $completedOnTime++;
-                }
-            } elseif ($statusClass === \App\States\Project\InProgress::class || $statusClass === \App\States\Project\Overdue::class) {
+                $completedOnTime++;
+            } elseif ($statusClass === \App\States\Project\OverdueCompleted::class) {
+                $completedDelayed++;
+            } elseif ($statusClass === \App\States\Project\InProgress::class) {
+                $inProgress++;
+            } elseif ($statusClass === \App\States\Project\Overdue::class) {
                 $inProgress++;
             } elseif ($statusClass === \App\States\Project\Suspended::class) {
                 $paused++;
+            } elseif ($statusClass === \App\States\Project\NotStarted::class) {
+                $notStarted++;
             }
         }
 
-        return (object) compact('total', 'completedOnTime', 'completedDelayed', 'inProgress', 'paused');
+        return (object) compact('total', 'completedOnTime', 'completedDelayed', 'inProgress', 'paused', 'notStarted');
     }
 
     /**
@@ -113,21 +116,25 @@ class DashboardService
             '正常结案' => 0,
             '延期结案' => 0,
             '进行中' => 0,
+            '超期' => 0,
             '暂停' => 0,
+            '未开始' => 0,
         ];
 
         foreach ($projects as $project) {
             $statusClass = get_class($project->status);
             if ($statusClass === \App\States\Project\Completed::class) {
-                if ($project->end_date && Carbon::parse($project->end_date)->isBefore(Carbon::parse($project->updated_at ?? now()))) {
-                    $statusData['延期结案']++;
-                } else {
-                    $statusData['正常结案']++;
-                }
-            } elseif ($statusClass === \App\States\Project\InProgress::class || $statusClass === \App\States\Project\Overdue::class) {
+                $statusData['正常结案']++;
+            } elseif ($statusClass === \App\States\Project\OverdueCompleted::class) {
+                $statusData['延期结案']++;
+            } elseif ($statusClass === \App\States\Project\InProgress::class) {
                 $statusData['进行中']++;
+            } elseif ($statusClass === \App\States\Project\Overdue::class) {
+                $statusData['超期']++;
             } elseif ($statusClass === \App\States\Project\Suspended::class) {
                 $statusData['暂停']++;
+            } elseif ($statusClass === \App\States\Project\NotStarted::class) {
+                $statusData['未开始']++;
             }
         }
 

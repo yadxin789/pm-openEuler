@@ -91,6 +91,25 @@
 </div>
 
 <style>
+    /* Bootstrap 的 btn-outline-* hover/active 会把文字变白，此处强制保持各类型文字颜色可见 */
+    .template-option.btn-outline-primary,
+    .template-option.btn-outline-primary:hover,
+    .template-option.btn-outline-primary.active,
+    .template-option.btn-outline-primary:focus {
+        color: #0d6efd !important;
+    }
+    .template-option.btn-outline-success,
+    .template-option.btn-outline-success:hover,
+    .template-option.btn-outline-success.active,
+    .template-option.btn-outline-success:focus {
+        color: #198754 !important;
+    }
+    .template-option.btn-outline-danger,
+    .template-option.btn-outline-danger:hover,
+    .template-option.btn-outline-danger.active,
+    .template-option.btn-outline-danger:focus {
+        color: #dc3545 !important;
+    }
     .template-option.active {
         border-color: #4a90d9 !important;
         background-color: rgba(74, 144, 217, 0.06) !important;

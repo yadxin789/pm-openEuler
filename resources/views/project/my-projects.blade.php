@@ -57,6 +57,18 @@
             'active' => false,
         ],
         [
+            'id' => 'not-started-projects',
+            'title' => '未开始项目列表',
+            'icon' => 'fa-flag-o',
+            'badgeClass' => 'bg-primary',
+            'headerClass' => 'bg-primary',
+            'progressColor' => '#6c757d',
+            'dateLabel' => '截止日期',
+            'emptyText' => '暂无未开始项目',
+            'projects' => $notStartedProjects,
+            'active' => false,
+        ],
+        [
             'id' => 'overdue-completed-projects',
             'title' => '逾期完成项目列表',
             'icon' => 'fa-calendar-check-o',
@@ -76,9 +88,10 @@
             return [
                 'in-progress-projects' => 0,
                 'overdue-projects' => 1,
-                'completed-projects' => 2,
-                'overdue-completed-projects' => 3,
-                'suspended-projects' => 4,
+                'not-started-projects' => 2,
+                'completed-projects' => 3,
+                'overdue-completed-projects' => 4,
+                'suspended-projects' => 5,
             ][$tab['id']] ?? 99;
         })
         ->values()

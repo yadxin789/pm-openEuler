@@ -53,7 +53,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title text-muted">正常结案</h5>
-                        <h3 class="text-success">{{ $projectStats->completed_on_time ?? 0 }}</h3>
+                        <h3 class="text-success">{{ $projectStats->completedOnTime ?? 0 }}</h3>
                     </div>
                     <i class="fa fa-check-circle fa-3x text-success opacity-30"></i>
                 </div>
@@ -67,7 +67,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title text-muted">延期结案</h5>
-                        <h3 class="text-warning">{{ $projectStats->completed_delayed ?? 0 }}</h3>
+                        <h3 class="text-warning">{{ $projectStats->completedDelayed ?? 0 }}</h3>
                     </div>
                     <i class="fa fa-clock-o fa-3x text-warning opacity-30"></i>
                 </div>
@@ -81,7 +81,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title text-muted">进行中</h5>
-                        <h3 class="text-info">{{ $projectStats->in_progress ?? 0 }}</h3>
+                        <h3 class="text-info">{{ $projectStats->inProgress ?? 0 }}</h3>
                     </div>
                     <i class="fa fa-spinner fa-3x text-info opacity-30"></i>
                 </div>
@@ -143,7 +143,7 @@
 </div>
 
 <div class="row mt-4">
-    <div class="col-md-12">
+    <div class="col-md-6">
         <div class="card stat-card">
             <div class="card-body">
                 <div class="d-flex justify-content-between">
@@ -152,6 +152,19 @@
                         <h3 class="text-secondary">{{ $projectStats->paused ?? 0 }}</h3>
                     </div>
                     <i class="fa fa-pause-circle fa-3x text-secondary opacity-30"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title text-muted">未开始项目</h5>
+                        <h3 class="text-muted">{{ $projectStats->notStarted ?? 0 }}</h3>
+                    </div>
+                    <i class="fa fa-flag-o fa-3x text-muted opacity-30"></i>
                 </div>
             </div>
         </div>
@@ -245,7 +258,9 @@ $(document).ready(function() {
                 {value: statusData['正常结案'] || 0, name: '正常结案', itemStyle: {color: '#52c41a'}},
                 {value: statusData['延期结案'] || 0, name: '延期结案', itemStyle: {color: '#faad14'}},
                 {value: statusData['进行中'] || 0, name: '进行中', itemStyle: {color: '#1890ff'}},
-                {value: statusData['暂停'] || 0, name: '暂停', itemStyle: {color: '#722ed1'}}
+                {value: statusData['超期'] || 0, name: '超期', itemStyle: {color: '#f5222d'}},
+                {value: statusData['暂停'] || 0, name: '暂停', itemStyle: {color: '#722ed1'}},
+                {value: statusData['未开始'] || 0, name: '未开始', itemStyle: {color: '#8c8c8c'}}
             ]
         }]
     });

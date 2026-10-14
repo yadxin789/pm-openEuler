@@ -14,6 +14,7 @@ use App\States\Project\InProgress;
 use App\States\Project\Completed;
 use App\States\Project\Overdue;
 use App\States\Project\OverdueCompleted;
+use App\States\Project\NotStarted;
 use App\Notifications\SystemNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -132,13 +133,18 @@ class ProjectController extends Controller
         $overdueCompletedProjects = $allProjects->filter(function($project) {
             return $project->status->equals(OverdueCompleted::class);
         })->sortByDesc('created_at');
-        
+
+        $notStartedProjects = $allProjects->filter(function($project) {
+            return $project->status->equals(NotStarted::class);
+        })->sortByDesc('created_at');
+
         return view('project.my-projects', compact(
             'overdueProjects',
             'inProgressProjects',
             'completedProjects',
             'suspendedProjects',
-            'overdueCompletedProjects'
+            'overdueCompletedProjects',
+            'notStartedProjects'
         ));
     }
 

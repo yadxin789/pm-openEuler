@@ -106,16 +106,8 @@
             $creatorProjectIds = \App\Models\Project::where('creator_id', $currentUser->id)->pluck('id');
             $myProjectIds = $executorProjectIds->merge($auditorProjectIds)->merge($creatorProjectIds)->unique();
             
-            $myOverdueProjectCount = \App\Models\Project::whereIn('id', $myProjectIds)
-                ->where('status', \App\States\Project\Overdue::class)->count();
-            $myInProgressProjectCount = \App\Models\Project::whereIn('id', $myProjectIds)
-                ->where('status', \App\States\Project\InProgress::class)->count();
-            $myCompletedProjectCount = \App\Models\Project::whereIn('id', $myProjectIds)
-                ->where('status', \App\States\Project\Completed::class)->count();
-            $mySuspendedProjectCount = \App\Models\Project::whereIn('id', $myProjectIds)
-                ->where('status', \App\States\Project\Suspended::class)->count();
-            // 合并后的项目入口显示四类项目总数，明细在“我的项目列表”属性页中查看。
-            $myProjectCount = $myOverdueProjectCount + $myInProgressProjectCount + $myCompletedProjectCount + $mySuspendedProjectCount;
+            // 徽章显示所有状态的项目总数（含未开始、逾期完成），明细在“我的项目列表”属性页中查看。
+            $myProjectCount = \App\Models\Project::whereIn('id', $myProjectIds)->count();
             
             // 执行人任务计数（排除暂停项目中的任务）
             $myOverdueTaskCount = \App\Models\Task::where('executor_id', $currentUser->id)
