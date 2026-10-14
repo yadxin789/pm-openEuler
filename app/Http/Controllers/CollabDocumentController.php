@@ -135,6 +135,14 @@ class CollabDocumentController extends Controller
      */
     public function download(CollabDocument $doc, Request $request)
     {
+        \Log::info('collab.download hit', [
+            'doc_id' => $doc->id ?? null,
+            'doc_storage' => $doc->storage_path ?? null,
+            'key_match' => $request->query('k') === ($doc->doc_key ?? null),
+            'exists' => isset($doc->storage_path) ? Storage::disk('file_repository')->exists($doc->storage_path) : null,
+            'disk_root' => Storage::disk('file_repository')->path(''),
+            'uid' => posix_getpwuid(posix_geteuid())['name'] ?? null,
+        ]);
         abort_unless($request->query('k') === $doc->doc_key, 403);
 
         if (!Storage::disk('file_repository')->exists($doc->storage_path)) {

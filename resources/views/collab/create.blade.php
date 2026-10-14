@@ -91,30 +91,39 @@
 </div>
 
 <style>
-    /* Bootstrap 的 btn-outline-* hover/active 会把文字变白，此处强制保持各类型文字颜色可见 */
-    .template-option.btn-outline-primary,
-    .template-option.btn-outline-primary:hover,
-    .template-option.btn-outline-primary.active,
-    .template-option.btn-outline-primary:focus {
-        color: #0d6efd !important;
+    /* 文档类型选择器：未选中 = 白底浅灰边深字；hover 边框显色；选中 = 实心色块 + 白字 */
+    .template-option {
+        border: 2px solid #dee2e6 !important;
+        background-color: #fff !important;
+        color: #212529 !important;
+        transition: all .15s ease-in-out;
     }
-    .template-option.btn-outline-success,
-    .template-option.btn-outline-success:hover,
-    .template-option.btn-outline-success.active,
-    .template-option.btn-outline-success:focus {
-        color: #198754 !important;
+    .template-option:hover {
+        transform: translateY(-1px);
     }
-    .template-option.btn-outline-danger,
-    .template-option.btn-outline-danger:hover,
-    .template-option.btn-outline-danger.active,
-    .template-option.btn-outline-danger:focus {
-        color: #dc3545 !important;
+    .template-option.btn-outline-primary:hover { border-color: #0d6efd !important; }
+    .template-option.btn-outline-success:hover { border-color: #198754 !important; }
+    .template-option.btn-outline-danger:hover  { border-color: #dc3545 !important; }
+
+    .template-option.active.btn-outline-primary {
+        background-color: #0d6efd !important;
+        border-color: #0d6efd !important;
+        color: #fff !important;
+        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
     }
-    .template-option.active {
-        border-color: #4a90d9 !important;
-        background-color: rgba(74, 144, 217, 0.06) !important;
-        box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    .template-option.active.btn-outline-success {
+        background-color: #198754 !important;
+        border-color: #198754 !important;
+        color: #fff !important;
+        box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.25);
     }
+    .template-option.active.btn-outline-danger {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+        color: #fff !important;
+        box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
+    }
+    .template-option.active i { color: #fff !important; }
 </style>
 <script>
     document.querySelectorAll('.template-option').forEach(function (label) {
