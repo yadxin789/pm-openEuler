@@ -267,7 +267,6 @@ XML,
   <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
   <p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
   <p:sldSz cx="9144000" cy="6858000"/>
-  <p:notesSz cx="6858000" cy="9144000"/>
   <p:defaultTextStyle>
     <a:defPPr><a:defRPr/></a:defPPr>
     <a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr>
