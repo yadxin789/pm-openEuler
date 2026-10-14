@@ -23,6 +23,7 @@ use App\Http\Controllers\WecomFileController;
 use App\Http\Controllers\UserWecomController;
 use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\CollabDocumentController;
+use App\Http\Controllers\AdminTrashController;
 use App\Http\Controllers\VoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -51,6 +52,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/users/deleted', [AdminController::class, 'deletedUsers'])->name('users.deleted');
         Route::post('/users/restore/{user}', [AdminController::class, 'restoreUser'])->name('users.restore');
         Route::delete('/users/force-delete/{user}', [AdminController::class, 'forceDeleteUser'])->name('users.force-delete');
+
+        // 回收站：全系统软删除内容的恢复与彻底删除（仅管理员）
+        Route::get('/collab-trash', [AdminTrashController::class, 'index'])->name('trash');
+        Route::post('/collab-trash/{type}/{id}/restore', [AdminTrashController::class, 'restore'])->name('trash.restore');
+        Route::delete('/collab-trash/{type}/{id}', [AdminTrashController::class, 'forceDelete'])->name('trash.force-delete');
         
         Route::get('/users', [AdminController::class, 'users'])->name('users');
         Route::get('/users/create', [AdminController::class, 'createUser'])->name('users.create');

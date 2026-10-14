@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class KnowledgeDoc extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'knowledge_id', 'pid', 'type', 'title', 'md_content', 'content', 'link', 'file_ids', 'read', 'sort',
     ];

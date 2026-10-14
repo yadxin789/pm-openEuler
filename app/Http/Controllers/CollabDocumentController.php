@@ -192,14 +192,12 @@ class CollabDocumentController extends Controller
 
         abort_unless($canDelete, 403);
 
-        if (Storage::disk('file_repository')->exists($doc->storage_path)) {
-            Storage::disk('file_repository')->delete($doc->storage_path);
-        }
+        // 软删除：只标记删除时间，保留物理文件，管理员可在回收站恢复或彻底删除。
         $doc->delete();
 
         return redirect()
             ->route('project.collab.index', $project)
-            ->with('success', '文档已删除');
+            ->with('success', '文档已移入回收站，可由管理员恢复');
     }
 
     private function fetchUrl(string $url): ?string

@@ -273,17 +273,22 @@ class FileController extends Controller
     }
 
     /**
-     * 删除部门文件
+     * 删除部门文件（软删除，进入回收站）
+     *
+     * 仅管理员或上传人可删除；物理文件保留，等待管理员在回收站恢复或彻底删除。
      */
     public function deleteDepartmentFile(DepartmentFile $file)
     {
-        // 删除文件
-        Storage::disk('file_repository')->delete($file->path);
-        
-        // 删除记录
+        $user = auth()->user();
+        abort_unless(
+            $user && ($user->isAdmin() || $file->uploader_id === $user->id),
+            403,
+            '您没有权限删除该资料文件'
+        );
+
         $file->delete();
 
-        return redirect()->back()->with('success', '文件删除成功');
+        return redirect()->back()->with('success', '文件已移入回收站，可由管理员恢复');
     }
 
     /**

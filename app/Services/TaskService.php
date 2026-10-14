@@ -92,7 +92,7 @@ class TaskService
             if ($isUpdate) {
                 $oldFile = $task->files()->where('status', 'approved')->first();
                 if ($oldFile && $oldFile->id != $pendingFile->id) {
-                    Storage::disk('file_repository')->delete($oldFile->path);
+                    // 软删除旧版本文件：保留物理文件，管理员可在回收站恢复或彻底删除。
                     $oldFile->delete();
                 }
             }
@@ -142,8 +142,7 @@ class TaskService
                     || $task->files()->where('status', 'approved')->where('id', '!=', $pendingFile->id)->exists();
 
                 if ($isUpdate) {
-                    // 更新文件被驳回：删除待审核文件，任务回到已完成状态
-                    Storage::disk('file_repository')->delete($pendingFile->path);
+                    // 更新文件被驳回：软删除待审核文件（保留物理文件供回收站恢复），任务回到已完成状态
                     $pendingFile->delete();
 
                     // 清理审核人的待办事项
@@ -171,8 +170,7 @@ class TaskService
                         ));
                     }
                 } else {
-                    // 首次上传被驳回：保留原有逻辑
-                    Storage::disk('file_repository')->delete($pendingFile->path);
+                    // 首次上传被驳回：保留记录与物理文件，仅标记为已驳回
                     $pendingFile->update([
                         'status' => 'rejected',
                         'auditor_id' => $userId,

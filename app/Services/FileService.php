@@ -57,14 +57,13 @@ class FileService
     }
 
     /**
-     * 安全删除文件（物理文件 + 数据库记录）
+     * 安全删除文件（软删除，进入回收站）
+     *
+     * 只标记 deleted_at，保留物理文件，管理员可在回收站恢复或彻底删除。
      */
     public function safeDelete(File $file): bool
     {
-        if (\Storage::disk('file_repository')->exists($file->path)) {
-            \Storage::disk('file_repository')->delete($file->path);
-        }
-        return $file->delete();
+        return (bool) $file->delete();
     }
 
     /**

@@ -132,14 +132,10 @@ class MessageController extends Controller
 
         $projectId = $message->project_id;
 
-        // 删除关联的物理文件
-        if ($message->file_path) {
-            Storage::disk('public')->delete($message->file_path);
-        }
-
+        // 软删除：保留附件物理文件，管理员可在回收站恢复或彻底删除。
         $message->delete();
 
-        return redirect()->route('messages.index', $projectId)->with('success', '留言已删除');
+        return redirect()->route('messages.index', $projectId)->with('success', '留言已移入回收站，可由管理员恢复');
     }
 
     // 清空当前用户在指定项目中的群聊留言板显示记录

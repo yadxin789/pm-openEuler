@@ -908,21 +908,13 @@ class AdminController extends Controller
         ]);
 
         $ids = $request->ids;
-        $messages = \App\Models\Message::whereIn('id', $ids)->get();
 
-        $deletedFiles = 0;
-        foreach ($messages as $message) {
-            if ($message->file_path) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($message->file_path);
-                $deletedFiles++;
-            }
-        }
-
+        // 软删除：保留附件物理文件，管理员可在回收站恢复或彻底删除。
         $deletedCount = \App\Models\Message::whereIn('id', $ids)->delete();
 
-        OperationLogHelper::log('聊天记录管理', '批量删除聊天记录', "管理员批量删除了 {$deletedCount} 条聊天记录，同时清理了 {$deletedFiles} 个文件");
+        OperationLogHelper::log('聊天记录管理', '批量删除聊天记录', "管理员将 {$deletedCount} 条聊天记录移入回收站");
 
-        return redirect()->route('admin.chat-messages')->with('success', "已删除 {$deletedCount} 条聊天记录，清理了 {$deletedFiles} 个文件");
+        return redirect()->route('admin.chat-messages')->with('success', "已将 {$deletedCount} 条聊天记录移入回收站，可由管理员恢复");
     }
 
     /**
@@ -938,24 +930,7 @@ class AdminController extends Controller
         $projectId = $request->project_id;
         $project = \App\Models\Project::find($projectId);
 
-        $query = \App\Models\Message::where('project_id', $projectId);
-
-        if ($request->chat_type === 'group') {
-            $query->where('is_private', false);
-        } elseif ($request->chat_type === 'private') {
-            $query->where('is_private', true);
-        }
-
-        // 先清理文件
-        $messages = $query->get();
-        $deletedFiles = 0;
-        foreach ($messages as $message) {
-            if ($message->file_path) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($message->file_path);
-                $deletedFiles++;
-            }
-        }
-
+        // 软删除：保留附件物理文件，管理员可在回收站恢复或彻底删除。
         $deletedCount = \App\Models\Message::where('project_id', $projectId);
         if ($request->chat_type === 'group') {
             $deletedCount->where('is_private', false);
@@ -964,9 +939,9 @@ class AdminController extends Controller
         }
         $deletedCount = $deletedCount->delete();
 
-        OperationLogHelper::log('聊天记录管理', '清空项目聊天记录', "管理员清空了项目「{$project->name}」的聊天记录，共 {$deletedCount} 条，清理了 {$deletedFiles} 个文件");
+        OperationLogHelper::log('聊天记录管理', '清空项目聊天记录', "管理员将项目「{$project->name}」的 {$deletedCount} 条聊天记录移入回收站");
 
-        return redirect()->route('admin.chat-messages')->with('success', "已清空项目「{$project->name}」的聊天记录：{$deletedCount} 条消息，{$deletedFiles} 个文件");
+        return redirect()->route('admin.chat-messages')->with('success', "已将项目「{$project->name}」的 {$deletedCount} 条聊天记录移入回收站，可由管理员恢复");
     }
 
     /**

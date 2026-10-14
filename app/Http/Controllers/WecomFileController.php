@@ -86,17 +86,18 @@ class WecomFileController extends Controller
     }
 
     /**
-     * 删除文件（物理+记录）
+     * 删除文件（软删除，进入回收站）
+     *
+     * 仅管理员或文件归属人可删除；物理文件保留，等待管理员在回收站彻底删除。
      */
     public function destroy(WecomFile $file)
     {
-        $fullPath = $file->getFullPath();
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
+        $user = auth()->user();
+        abort_unless($user && ($user->isAdmin() || $file->user_id === $user->id), 403, '您没有权限删除该文件');
 
         $file->delete();
-        return back()->with('success', '文件已删除');
+
+        return back()->with('success', '文件已移入回收站，可由管理员恢复');
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * 项目模板模型
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ProjectTemplate extends Model
 {
+    use SoftDeletes;
+
     // 可填充字段
     protected $fillable = ['name', 'description', 'user_id'];
 

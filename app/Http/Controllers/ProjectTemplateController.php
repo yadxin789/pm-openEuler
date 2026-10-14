@@ -248,10 +248,17 @@ class ProjectTemplateController extends Controller
      */
     public function destroy(ProjectTemplate $projectTemplate)
     {
-        // 删除模板（关联的模板任务会自动删除）
+        $user = auth()->user();
+        abort_unless(
+            $user && ($user->isAdmin() || $projectTemplate->user_id === $user->id),
+            403,
+            '只有模板创建人或管理员可以删除项目模板'
+        );
+
+        // 软删除：模板任务配置保留，管理员可在回收站恢复或彻底删除。
         $projectTemplate->delete();
 
         return redirect()->route('project-template.index')
-            ->with('success', '项目模板删除成功');
+            ->with('success', '项目模板已移入回收站，可由管理员恢复');
     }
 }

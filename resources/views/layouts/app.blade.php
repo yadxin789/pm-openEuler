@@ -240,6 +240,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('admin.trash*') || request()->routeIs('admin.users.deleted') ? 'active' : '' }}" href="{{ route('admin.trash') }}">
+                                <i class="fa fa-trash me-2"></i> 回收站
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {{ request()->routeIs('knowledge.*') ? 'active' : '' }}" href="{{ route('knowledge.index') }}">
                                 <i class="fa fa-book me-2"></i> 知识库
                             </a>
