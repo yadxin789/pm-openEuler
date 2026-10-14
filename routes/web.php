@@ -24,6 +24,7 @@ use App\Http\Controllers\UserWecomController;
 use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\CollabDocumentController;
 use App\Http\Controllers\AdminTrashController;
+use App\Http\Controllers\MyTrashController;
 use App\Http\Controllers\VoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +46,10 @@ Route::prefix('wecom')->name('wecom.')->group(function () {
 // 认证路由
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // 个人回收站：每个人管理「自己删除的 / 自己创建的」内容（管理员只有统一回收站入口）
+    Route::get('/my-trash', [MyTrashController::class, 'index'])->name('my-trash');
+    Route::post('/my-trash/{type}/{id}/restore', [MyTrashController::class, 'restore'])->name('my-trash.restore')->whereNumber('id');
 
     Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('index');

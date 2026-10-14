@@ -519,6 +519,24 @@
                                     </a>
                                 </li>
                                 
+                                {{-- 我的回收站：仅登录的非管理员显示（管理员使用左侧菜单里的统一回收站） --}}
+                                @if($currentUser && !$isAdmin)
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('my-trash') }}" title="我的回收站" style="display: flex; align-items: center;">
+                                        <i class="fa fa-trash-o" style="font-size: 18px;"></i>
+                                        @php
+                                            $myTrashCount = 0;
+                                            if (auth()->check()) {
+                                                $myTrashCount = \App\Services\TrashService::countForUser(auth()->id());
+                                            }
+                                        @endphp
+                                        @if($myTrashCount > 0)
+                                        <span class="badge badge-danger rounded-pill ms-1" style="background-color: #dc3545; color: white; min-width: 20px; height: 20px; border-radius: 50%; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;">{{ $myTrashCount }}</span>
+                                        @endif
+                                    </a>
+                                </li>
+                                @endif
+
                                 <li class="nav-item dropdown user-info">
                                     <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="用户中心">
                                         <div class="user-avatar">

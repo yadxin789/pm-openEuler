@@ -3,22 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\OperationLogHelper;
-use App\Models\CollabDocument;
-use App\Models\DepartmentFile;
-use App\Models\File;
-use App\Models\Knowledge;
-use App\Models\KnowledgeDoc;
-use App\Models\Message;
-use App\Models\Notification;
-use App\Models\Project;
-use App\Models\ProjectTemplate;
-use App\Models\Task;
 use App\Models\User;
-use App\Models\WecomFile;
 use App\Services\TrashService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 /**
  * 管理员回收站。
@@ -31,21 +19,9 @@ use Illuminate\Support\Str;
 class AdminTrashController extends Controller
 {
     /**
-     * 回收站分类：type => [模型, 显示名, 图标, 取名字段]
+     * 回收站分类统一维护在 TrashService::TYPES（管理员回收站与个人回收站共用）。
      */
-    public const TYPES = [
-        'collab-documents'  => ['model' => CollabDocument::class,  'label' => '协作文档', 'icon' => 'fa-file-text-o', 'field' => 'name'],
-        'projects'          => ['model' => Project::class,         'label' => '项目',     'icon' => 'fa-folder-o',    'field' => 'name'],
-        'tasks'             => ['model' => Task::class,            'label' => '任务',     'icon' => 'fa-tasks',       'field' => 'name'],
-        'files'             => ['model' => File::class,            'label' => '任务文件', 'icon' => 'fa-paperclip',   'field' => 'original_name'],
-        'department-files'  => ['model' => DepartmentFile::class,  'label' => '资料文件', 'icon' => 'fa-folder-open', 'field' => 'original_name'],
-        'messages'          => ['model' => Message::class,         'label' => '聊天记录', 'icon' => 'fa-comments',    'field' => 'content'],
-        'wecom-files'       => ['model' => WecomFile::class,       'label' => '企微文件', 'icon' => 'fa-inbox',       'field' => 'original_name'],
-        'notifications'     => ['model' => Notification::class,    'label' => '通知',     'icon' => 'fa-bell',        'field' => 'title'],
-        'knowledges'        => ['model' => Knowledge::class,       'label' => '知识库',   'icon' => 'fa-book',        'field' => 'title'],
-        'knowledge-docs'    => ['model' => KnowledgeDoc::class,    'label' => '知识文档', 'icon' => 'fa-file-text-o', 'field' => 'title'],
-        'project-templates' => ['model' => ProjectTemplate::class, 'label' => '项目模板', 'icon' => 'fa-clone',       'field' => 'name'],
-    ];
+    public const TYPES = TrashService::TYPES;
 
     public function __construct()
     {
@@ -255,26 +231,10 @@ class AdminTrashController extends Controller
     }
 
     /**
-     * 生成记录在回收站中的展示名称。
+     * 生成记录在回收站中的展示名称（统一实现见 TrashService::displayName）。
      */
-    protected function displayName(string $type, Model $model, string $field): string
+    protected function displayName(string $type, Model $model, ?string $field = null): string
     {
-        if ($type === 'collab-documents') {
-            $ext = !empty($model->extension) ? '.' . $model->extension : '';
-
-            return Str::limit(($model->name ?? '未命名') . $ext, 60);
-        }
-
-        if ($type === 'messages') {
-            $text = trim((string) ($model->content ?? ''));
-            if ($text === '') {
-                $fileName = (string) ($model->file_name ?? '');
-                $text = $fileName !== '' ? '[文件] ' . $fileName : '（空消息）';
-            }
-
-            return Str::limit($text, 60);
-        }
-
-        return Str::limit((string) ($model->getAttribute($field) ?? '未命名'), 60);
+        return TrashService::displayName($type, $model);
     }
 }
