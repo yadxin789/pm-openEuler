@@ -25,9 +25,10 @@ class TrashService
 {
     /**
      * 模型 => 物理文件所在磁盘与字段。
+     * history_dir = true 表示该模型还带有附加的历史版本快照目录，彻底删除时需一并清理。
      */
     public const PURGE_MAP = [
-        CollabDocument::class => ['disk' => 'file_repository', 'column' => 'storage_path'],
+        CollabDocument::class => ['disk' => 'file_repository', 'column' => 'storage_path', 'history_dir' => true],
         File::class           => ['disk' => 'file_repository', 'column' => 'path'],
         DepartmentFile::class => ['disk' => 'file_repository', 'column' => 'path'],
         Message::class        => ['disk' => 'public',          'column' => 'file_path'],
@@ -79,18 +80,44 @@ class TrashService
             return;
         }
 
-        $relative = $model->getAttribute($config['column']);
-        if (!$relative) {
-            return;
-        }
-
         try {
             $disk = Storage::disk($config['disk']);
-            if ($disk->exists($relative)) {
+
+            // 主文件
+            $relative = $model->getAttribute($config['column']);
+            if ($relative && $disk->exists($relative)) {
                 $disk->delete($relative);
+            }
+
+            // 附加的历史版本快照目录（协作文档）
+            if (!empty($config['history_dir']) && $model instanceof CollabDocument) {
+                self::purgeHistorySnapshots($disk, $model);
             }
         } catch (\Throwable $e) {
             report($e);
+        }
+    }
+
+    /**
+     * 清理协作文档的历史版本快照 collab/{projectId}/history/{docId}_v*.{ext}，
+     * 避免彻底删除后残留孤儿文件；目录清空后一并移除。
+     */
+    protected static function purgeHistorySnapshots($disk, CollabDocument $doc): void
+    {
+        $dir = 'collab/' . $doc->project_id . '/history';
+        if (!$disk->exists($dir)) {
+            return;
+        }
+
+        $prefix = $doc->id . '_v';
+        foreach ($disk->files($dir) as $file) {
+            if (str_starts_with(basename($file), $prefix)) {
+                $disk->delete($file);
+            }
+        }
+
+        if (empty($disk->files($dir)) && empty($disk->directories($dir))) {
+            $disk->deleteDirectory($dir);
         }
     }
 }

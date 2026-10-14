@@ -12,6 +12,11 @@ use Illuminate\Validation\ValidationException;
 
 class CollabDocumentController extends Controller
 {
+    /**
+     * 每个协作文档最多保留的历史版本快照数量，超出部分在保存时自动清理。
+     */
+    private const MAX_HISTORY_VERSIONS = 2;
+
     public function __construct()
     {
         $this->middleware('auth')->except(['download', 'callback']);
@@ -159,10 +164,11 @@ class CollabDocumentController extends Controller
         $status = (int) ($payload['status'] ?? 0);
 
         if (in_array($status, [2, 6], true) && !empty($payload['url'])) {
-            // 备份当前版本
+            // 备份当前版本为历史快照，并清理超出保留数量的旧版本
             if (Storage::disk('file_repository')->exists($doc->storage_path)) {
                 $historyPath = 'collab/' . $doc->project_id . '/history/' . $doc->id . '_v' . $doc->version . '.' . $doc->extension;
                 Storage::disk('file_repository')->copy($doc->storage_path, $historyPath);
+                $this->pruneHistory($doc);
             }
 
             // 从 OnlyOffice 临时地址下载最新文件
@@ -176,6 +182,45 @@ class CollabDocumentController extends Controller
         }
 
         return response()->json(['error' => 0]);
+    }
+
+    /**
+     * 只保留该文档最近 MAX_HISTORY_VERSIONS 个历史版本快照，超出部分自动清理。
+     * 命名规则：collab/{projectId}/history/{docId}_v{version}.{ext}，版本号越大越新。
+     */
+    private function pruneHistory(CollabDocument $doc): void
+    {
+        $disk = Storage::disk('file_repository');
+        $dir = 'collab/' . $doc->project_id . '/history';
+
+        if (!$disk->exists($dir)) {
+            return;
+        }
+
+        $prefix = $doc->id . '_v';
+        $snapshots = [];
+
+        foreach ($disk->files($dir) as $file) {
+            $name = basename($file);
+            if (!str_starts_with($name, $prefix)) {
+                continue;
+            }
+
+            $version = (int) explode('.', substr($name, strlen($prefix)))[0];
+            if ($version > 0) {
+                $snapshots[$version] = $file;
+            }
+        }
+
+        if (count($snapshots) <= self::MAX_HISTORY_VERSIONS) {
+            return;
+        }
+
+        // 版本号由新到旧排序，删除超出保留数量的旧快照（仅本文件，不影响同项目其他文档）
+        krsort($snapshots);
+        foreach (array_slice($snapshots, self::MAX_HISTORY_VERSIONS) as $obsolete) {
+            $disk->delete($obsolete);
+        }
     }
 
     /**
