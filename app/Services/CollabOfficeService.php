@@ -147,9 +147,22 @@ class CollabOfficeService
         return match (strtolower($extension)) {
             'docx' => $this->buildDocx(),
             'xlsx' => $this->buildXlsx(),
-            'pptx' => $this->buildPptx(),
+            'pptx' => $this->buildPptxFile(),
             default => throw new \InvalidArgumentException("不支持的模板类型: {$extension}"),
         };
+    }
+
+    /**
+     * 从仓库内的真实模板文件读取（由 python-pptx 生成的标准 Office pptx，
+     * 避免手搓 OOXML 触发 OnlyOffice C++ 渲染器的 createDuplicate 崩溃）。
+     */
+    private function buildPptxFile(): string
+    {
+        $path = resource_path('templates/template.pptx');
+        if (!is_file($path)) {
+            throw new \RuntimeException("PPT 模板文件不存在：{$path}。请确认 resources/templates/template.pptx 已随代码部署（git pull）。");
+        }
+        return file_get_contents($path);
     }
 
     private function zip(array $files): string
