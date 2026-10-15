@@ -34,17 +34,22 @@ Schedule::command('trash:purge-expired')
 
 // 任务到期提醒：每天早上 8:00 检查未来 3 天内到期的任务并通知执行人
 Schedule::call([ReminderService::class, 'checkUpcomingDeadlines'])
+    ->name('reminder:upcoming-deadlines')
     ->dailyAt('08:00');
 
 // 任务逾期检查：每 30 分钟检查是否有新逾期的任务
+// 注意：闭包/callable 类型的调度必须先 name() 才能 withoutOverlapping()，否则会抛 LogicException
 Schedule::call([ReminderService::class, 'checkOverdueTasks'])
+    ->name('reminder:overdue-tasks')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
 // 审核超时提醒：每天上午 10:00 和下午 15:00 检查审核超时的任务
 Schedule::call([ReminderService::class, 'checkAuditOverdue'])
+    ->name('reminder:audit-overdue')
     ->twiceDaily(10, 15);
 
 // 项目逾期检查：每天凌晨 1:00 检查项目是否逾期
 Schedule::call([ReminderService::class, 'checkOverdueProjects'])
+    ->name('reminder:overdue-projects')
     ->dailyAt('01:00');
