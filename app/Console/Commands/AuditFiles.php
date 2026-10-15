@@ -271,41 +271,18 @@ class AuditFiles extends Command
     {
         $result = [];
 
-        $collect = function (string $dir) use ($disk, &$result) {
+        foreach ($this->managedRoots($disk, $spec) as $root) {
             try {
-                foreach ($disk->allFiles($dir) as $file) {
-                    $name = basename($file);
+                foreach ($disk->allFiles($root) as $file) {
                     // 跳过隐藏文件（.gitignore 等），它们不属于业务数据
-                    if (str_starts_with($name, '.')) {
+                    if (str_starts_with(basename($file), '.')) {
                         continue;
                     }
+
                     $result[] = $file;
                 }
             } catch (\Throwable $e) {
                 report($e);
-            }
-        };
-
-        foreach ($spec['paths'] ?? [] as $dir) {
-            if ($dir === '') {
-                foreach ($disk->directories('') as $sub) {
-                    $collect($sub);
-                }
-                continue;
-            }
-
-            if ($disk->exists($dir)) {
-                $collect($dir);
-            }
-        }
-
-        foreach ($spec['patterns'] ?? [] as $pattern) {
-            $regex = '#^' . str_replace('\*', '.*', preg_quote($pattern, '#')) . '$#';
-
-            foreach ($disk->directories('') as $sub) {
-                if (preg_match($regex, basename($sub))) {
-                    $collect($sub);
-                }
             }
         }
 
@@ -407,7 +384,10 @@ class AuditFiles extends Command
     }
 
     /**
-     * 清理空目录（受管范围内），避免目录树残留。
+     * 清理受管范围内的空目录。
+     *
+     * 必须「自底向上」逐层判断：只有先把最深处的空目录删掉，
+     * 它的父目录才可能变成空目录。因此这里按目录层级由深到浅排序后依次清理。
      */
     protected function cleanEmptyDirs(bool $fix): void
     {
@@ -424,18 +404,36 @@ class AuditFiles extends Command
                 continue;
             }
 
-            foreach ($spec['paths'] ?? [] as $dir) {
-                $targets = $dir === '' ? $disk->directories('') : [$dir];
+            foreach ($this->managedRoots($disk, $spec) as $root) {
+                if (!$disk->exists($root)) {
+                    continue;
+                }
 
-                foreach ($targets as $target) {
-                    if (!$disk->exists($target)) {
+                try {
+                    $dirs = $disk->allDirectories($root);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+
+                // 深的在前，最后再处理根目录自身
+                usort($dirs, fn ($a, $b) => substr_count($b, '/') <=> substr_count($a, '/'));
+                $dirs[] = $root;
+
+                foreach ($dirs as $dir) {
+                    if (!$disk->exists($dir)) {
                         continue;
                     }
 
-                    $before = count($this->allDirectoriesDeep($disk, $target));
-                    TrashService::removeIfEmpty($disk, $target);
-                    $after = $disk->exists($target) ? count($this->allDirectoriesDeep($disk, $target)) : 0;
-                    $removed += max(0, $before - $after);
+                    if (!empty($disk->files($dir)) || !empty($disk->directories($dir))) {
+                        continue;
+                    }
+
+                    try {
+                        $disk->deleteDirectory($dir);
+                        $removed++;
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
                 }
             }
         }
@@ -445,13 +443,34 @@ class AuditFiles extends Command
         }
     }
 
-    protected function allDirectoriesDeep($disk, string $dir): array
+    /**
+     * 取出某磁盘下需要巡检的顶层目录。
+     */
+    protected function managedRoots($disk, array $spec): array
     {
-        try {
-            return array_merge([$dir], $disk->allDirectories($dir));
-        } catch (\Throwable $e) {
-            return [];
+        $roots = [];
+
+        foreach ($spec['paths'] ?? [] as $dir) {
+            if ($dir === '') {
+                foreach ($disk->directories('') as $sub) {
+                    $roots[] = $sub;
+                }
+            } elseif ($disk->exists($dir)) {
+                $roots[] = $dir;
+            }
         }
+
+        foreach ($spec['patterns'] ?? [] as $pattern) {
+            $regex = '#^' . str_replace('\*', '.*', preg_quote($pattern, '#')) . '$#';
+
+            foreach ($disk->directories('') as $sub) {
+                if (preg_match($regex, basename($sub))) {
+                    $roots[] = $sub;
+                }
+            }
+        }
+
+        return array_values(array_unique($roots));
     }
 
     /**
