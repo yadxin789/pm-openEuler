@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class DefaultMember extends Model
 {
-    protected $fillable = ['department_id', 'executor_id', 'auditor_id'];
+    protected $fillable = ['department_id', 'task_template_id', 'executor_id', 'auditor_id'];
 
     public function department()
     {
