@@ -199,7 +199,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-danger">
-                        <strong>注意：</strong>此操作将永久删除聊天记录和关联的文件，不可恢复！
+                        <strong>注意：</strong>此操作将清空所选项目的聊天记录，内容将移入回收站，可在回收站中恢复。
                     </div>
                     <div class="mb-3">
                         <label for="clear_project_id" class="form-label">选择项目</label>
@@ -221,7 +221,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-danger" onclick="return confirm('确定要清空吗？此操作不可恢复！')">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('确定要清空吗？聊天记录将移入回收站，可在回收站中恢复。')">
                         <i class="fa fa-eraser mr-1"></i>确认清空
                     </button>
                 </div>
@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function batchDelete() {
     const ids = Array.from(document.querySelectorAll('.message-checkbox:checked')).map(cb => cb.value);
     if (ids.length === 0) return;
-    if (!confirm('确定要删除选中的 ' + ids.length + ' 条聊天记录吗？关联的文件也会被删除。')) return;
+    if (!confirm('确定要删除选中的 ' + ids.length + ' 条聊天记录吗？内容将移入回收站，可在回收站中恢复。')) return;
 
     const form = document.createElement('form');
     form.method = 'POST';
@@ -275,7 +275,7 @@ function batchDelete() {
 
 // 单条删除
 function deleteSingle(id) {
-    if (!confirm('确定要删除这条聊天记录吗？关联的文件也会被删除。')) return;
+    if (!confirm('确定要删除这条聊天记录吗？内容将移入回收站，可在回收站中恢复。')) return;
 
     const form = document.createElement('form');
     form.method = 'POST';

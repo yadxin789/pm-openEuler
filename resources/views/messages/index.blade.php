@@ -120,7 +120,7 @@
                                             <form action="{{ route('messages.destroy', ['projectId' => $project->id, 'id' => $message->id]) }}" method="POST" class="mt-1">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="btn btn-xs btn-outline-danger" onclick="return confirm('确定要删除这条聊天吗？')">
+                                                <button type="submit" class="btn btn-xs btn-outline-danger" onclick="return confirm('确定要删除这条聊天吗？删除后可在回收站中恢复。')">
                                                     <i class="fa fa-trash"></i>
                                                 </button>
                                             </form>

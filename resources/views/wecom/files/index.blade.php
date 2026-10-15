@@ -130,7 +130,7 @@
                                 </form>
                             @endif
                             <form action="{{ route('wecom.file.destroy', $file) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('确定删除此文件？将同时删除存储的文件。')">
+                                  onsubmit="return confirm('确定删除此文件吗？删除后可在回收站中恢复。')">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-outline-danger" title="删除">

@@ -60,7 +60,7 @@
                                     <form action="{{ route('file.delete-department', $file) }}" method="POST" class="d-inline">
                                         @csrf
                                         @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此文件吗？')">删除</button>
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此文件吗？删除后可在回收站中恢复。')">删除</button>
                                     </form>
 
                                     <!-- 更新模态框 -->

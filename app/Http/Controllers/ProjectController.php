@@ -301,7 +301,7 @@ class ProjectController extends Controller
     {
         Gate::authorize('delete', $project);
         $project->delete();
-        return redirect()->route('project.index')->with('success', '项目删除成功');
+        return redirect()->route('project.index')->with('success', '项目已移入回收站，可随时在回收站中恢复');
     }
 
     /**

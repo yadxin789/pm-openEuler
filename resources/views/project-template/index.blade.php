@@ -39,7 +39,7 @@
                         <form action="{{ route('project-template.destroy', $template) }}" method="POST" class="d-inline">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除该模板？')">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除该模板吗？删除后可在回收站中恢复。')">
                                 <i class="fa fa-trash me-1"></i>删除
                             </button>
                         </form>

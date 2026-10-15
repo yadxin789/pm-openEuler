@@ -237,12 +237,12 @@ class CollabDocumentController extends Controller
 
         abort_unless($canDelete, 403);
 
-        // 软删除：只标记删除时间，保留物理文件，管理员可在回收站恢复或彻底删除。
+        // 软删除：只标记删除时间与删除人，保留物理文件；恢复走个人回收站或管理员统一回收站。
         $doc->delete();
 
         return redirect()
             ->route('project.collab.index', $project)
-            ->with('success', '文档已移入回收站，可由管理员恢复');
+            ->with('success', '文档已移入回收站，可随时在回收站中恢复');
     }
 
     private function fetchUrl(string $url): ?string

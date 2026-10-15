@@ -70,7 +70,7 @@
                                         || auth()->user()->id === $doc->created_by;
                                 @endphp
                                 @if($canDelete)
-                                <form action="{{ route('project.collab.destroy', ['project' => $project, 'doc' => $doc]) }}" method="POST" class="d-inline" onsubmit="return confirm('确定删除文档《{{ $doc->name }}》吗？删除后不可恢复。')">
+                                <form action="{{ route('project.collab.destroy', ['project' => $project, 'doc' => $doc]) }}" method="POST" class="d-inline" onsubmit="return confirm('确定删除文档《{{ $doc->name }}》吗？删除后可在回收站中恢复。')">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="删除">

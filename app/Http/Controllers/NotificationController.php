@@ -49,6 +49,6 @@ class NotificationController extends Controller
         }
 
         $notification->delete();
-        return redirect()->back()->with('success', '通知已删除');
+        return redirect()->back()->with('success', '通知已删除，可随时在回收站中恢复');
     }
 }

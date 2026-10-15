@@ -255,10 +255,10 @@ class ProjectTemplateController extends Controller
             '只有模板创建人或管理员可以删除项目模板'
         );
 
-        // 软删除：模板任务配置保留，管理员可在回收站恢复或彻底删除。
+        // 软删除：模板任务配置保留；恢复走个人回收站或管理员统一回收站。
         $projectTemplate->delete();
 
         return redirect()->route('project-template.index')
-            ->with('success', '项目模板已移入回收站，可由管理员恢复');
+            ->with('success', '项目模板已移入回收站，可随时在回收站中恢复');
     }
 }

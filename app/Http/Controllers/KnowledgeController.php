@@ -97,7 +97,7 @@ class KnowledgeController extends Controller
         }
         OperationLogHelper::log('知识库', '删除', "删除知识库「{$knowledge->title}」");
         $knowledge->delete();
-        return redirect()->route('knowledge.index')->with('success', '知识库已删除');
+        return redirect()->route('knowledge.index')->with('success', '知识库已删除，可随时在回收站中恢复');
     }
 
     public function docStore(Request $request, Knowledge $knowledge)
@@ -149,7 +149,7 @@ class KnowledgeController extends Controller
         }
         OperationLogHelper::log('知识库', '删除文档', "「{$knowledge->title}」删除文档「{$doc->title}」");
         $doc->delete();
-        return redirect()->route('knowledge.show', $knowledge)->with('success', '文档已删除');
+        return redirect()->route('knowledge.show', $knowledge)->with('success', '文档已删除，可随时在回收站中恢复');
     }
 
     public function docRead(Knowledge $knowledge, KnowledgeDoc $doc)

@@ -288,7 +288,7 @@ class FileController extends Controller
 
         $file->delete();
 
-        return redirect()->back()->with('success', '文件已移入回收站，可由管理员恢复');
+        return redirect()->back()->with('success', '文件已移入回收站，可随时在回收站中恢复');
     }
 
     /**

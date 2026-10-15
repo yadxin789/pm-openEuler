@@ -40,7 +40,7 @@
                     </form>
                     @endif
                     <form action="{{ route('notification.destroy', $notification) }}" method="POST" 
-                          onsubmit="return confirm('确定要删除这条通知吗？此操作不可恢复。')">
+                          onsubmit="return confirm('确定要删除这条通知吗？删除后可在回收站中恢复。')">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="btn btn-sm btn-danger">删除</button>
