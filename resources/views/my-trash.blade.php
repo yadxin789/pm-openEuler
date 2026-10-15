@@ -15,6 +15,9 @@
         <i class="fa fa-info-circle me-1"></i>
         这里只显示<strong>您自己删除的</strong>或<strong>您创建的</strong>内容。恢复后内容会回到原来的位置。
         被管理员彻底删除的内容不在此列。
+        <br>
+        <i class="fa fa-exclamation-triangle me-1"></i>
+        回收站内容仅保留 <strong>{{ config('pm.trash_retention_days', 15) }} 天</strong>，逾期系统会自动彻底删除且无法恢复，请及时恢复需要保留的内容。
     </div>
 
     @if(session('success'))

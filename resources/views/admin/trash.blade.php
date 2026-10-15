@@ -19,6 +19,9 @@
     <div class="alert alert-warning">
         <i class="fa fa-exclamation-triangle me-1"></i>
         <strong>仅管理员可访问。</strong>此处列出全系统被软删除的内容；「恢复」会把内容还原，「彻底删除」不可撤销，并会一并清理磁盘上的物理文件。
+        <br>
+        <i class="fa fa-info-circle me-1"></i>
+        回收站内容仅保留 <strong>{{ config('pm.trash_retention_days', 15) }} 天</strong>，逾期由系统每日自动彻底删除（含物理文件），如需长期留存请提前恢复。
     </div>
 
     @if(session('success'))

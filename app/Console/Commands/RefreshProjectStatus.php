@@ -5,9 +5,12 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\Project;
 use App\Models\Task;
-use App\States\Task\TaskCompleted;
-use App\States\Project\ProjectInProgress;
-use App\States\Project\ProjectCompleted;
+// 注意：状态类的实际名称是 Completed / InProgress，
+// 原先的 TaskCompleted / ProjectInProgress / ProjectCompleted 并不存在，
+// 导致 ::class 解析成不存在的类名、查询条件永远匹配不到（本命令长期未真正生效）。
+use App\States\Task\Completed as TaskCompleted;
+use App\States\Project\InProgress as ProjectInProgress;
+use App\States\Project\Completed as ProjectCompleted;
 use App\States\Project\Overdue as ProjectOverdue;
 use App\States\Project\Suspended as ProjectSuspended;
 use Carbon\Carbon;

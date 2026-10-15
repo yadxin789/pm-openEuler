@@ -15,6 +15,9 @@ return [
     'login_decay_minutes' => env('PM_LOGIN_DECAY_MINUTES', 15),
     'backup_retention_days' => env('PM_BACKUP_RETENTION_DAYS', 30),
 
+    // 回收站内容保留天数：软删除满该天数的记录会被定时任务自动彻底删除（含物理文件）
+    'trash_retention_days' => env('PM_TRASH_RETENTION_DAYS', 15),
+
     /*
     |--------------------------------------------------------------------------
     | 用户注册配置
