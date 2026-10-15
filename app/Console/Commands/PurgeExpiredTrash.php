@@ -4,11 +4,6 @@ namespace App\Console\Commands;
 
 use App\Helpers\OperationLogHelper;
 use App\Models\CollabDocument;
-use App\Models\File;
-use App\Models\KnowledgeDoc;
-use App\Models\Message;
-use App\Models\Project;
-use App\Models\Task;
 use App\Services\TrashService;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
@@ -54,6 +49,13 @@ class PurgeExpiredTrash extends Command
         $this->info("{$prefix}保留期限：{$days} 天（将清理 {$cutoff->toDateTimeString()} 之前删除的内容）");
 
         $summary = [];
+
+        // 语音会议里上传的临时演示文件（有效期 7 天）不属于回收站分类，
+        // 但同样需要按期清理，否则 voice_demo 目录会持续膨胀。
+        $this->purgeExpiredDemoFiles($dryRun);
+        if ($this->purgedTotal > 0) {
+            $summary[] = "临时演示文件 {$this->purgedTotal} 条";
+        }
 
         foreach (TrashService::TYPES as $type => $config) {
             $before = $this->purgedTotal;
@@ -102,15 +104,17 @@ class PurgeExpiredTrash extends Command
     }
 
     /**
-     * 清理单条记录：先清子内容，再彻底删除自身。
+     * 清理单条记录：先清子内容（容器型），再彻底删除自身。
      * 单条失败不影响其余记录。
+     *
+     * 子内容清理与删除顺序统一由 TrashService::forceDeleteDeep() 保证，
+     * 与管理员在回收站手动「彻底删除」共用同一套逻辑，避免两处行为不一致。
      */
     protected function purgeOne(string $type, Model $item, bool $dryRun): void
     {
         try {
             if (!$dryRun) {
-                $this->purgeChildren($type, $item);
-                TrashService::forceDelete($item);
+                TrashService::forceDeleteDeep($item);
             }
 
             $this->purgedTotal++;
@@ -121,53 +125,38 @@ class PurgeExpiredTrash extends Command
     }
 
     /**
-     * 容器型内容的子内容清理。
+     * 清理已过期的临时演示文件。
      *
-     * 这些子记录会被数据库外键 CASCADE 一并硬删，但 CASCADE 不经过 Eloquent，
-     * 不会清理物理文件，因此必须在这里先逐条彻底删除。
-     * 使用 withTrashed() 覆盖「已删」与「未删」两种状态，确保不留下孤儿文件。
+     * 由 VoiceController::uploadDemoFile() 创建（is_temp_demo=1，有效期 7 天），
+     * 属于「到点即失效」的临时内容，因此直接彻底删除（含物理文件），不进回收站。
      */
-    protected function purgeChildren(string $type, Model $item): void
+    protected function purgeExpiredDemoFiles(bool $dryRun): void
     {
-        switch ($type) {
-            case 'projects':
-                $this->purgeProjectChildren($item);
-                break;
+        $expired = CollabDocument::withTrashed()
+            ->where('is_temp_demo', true)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', Carbon::now())
+            ->orderBy('id')
+            ->get();
 
-            case 'project-templates':
-                foreach ($item->templateTasks()->get() as $templateTask) {
-                    TrashService::forceDelete($templateTask);
-                }
-                break;
+        $count = 0;
 
-            case 'knowledges':
-                // knowledge_docs 无外键约束，不清理会残留孤儿记录
-                foreach (KnowledgeDoc::withTrashed()->where('knowledge_id', $item->getKey())->get() as $doc) {
+        foreach ($expired as $doc) {
+            try {
+                if (!$dryRun) {
                     TrashService::forceDelete($doc);
                 }
-                break;
-        }
-    }
-
-    /**
-     * 项目下的协作文档、聊天记录、任务与任务文件。
-     */
-    protected function purgeProjectChildren(Project $project): void
-    {
-        foreach (CollabDocument::withTrashed()->where('project_id', $project->id)->get() as $doc) {
-            TrashService::forceDelete($doc);
-        }
-
-        foreach (Message::withTrashed()->where('project_id', $project->id)->get() as $message) {
-            TrashService::forceDelete($message);
-        }
-
-        foreach (Task::withTrashed()->where('project_id', $project->id)->get() as $task) {
-            foreach (File::withTrashed()->where('task_id', $task->id)->get() as $file) {
-                TrashService::forceDelete($file);
+                $count++;
+            } catch (\Throwable $e) {
+                $this->error(sprintf('  ✗ 临时演示文件#%s 清理失败：%s', $doc->getKey(), $e->getMessage()));
+                report($e);
             }
-
-            TrashService::forceDelete($task);
         }
+
+        if ($count > 0) {
+            $this->line(sprintf('  %s临时演示文件：%d 条', $dryRun ? '[预演] ' : '', $count));
+        }
+
+        $this->purgedTotal += $count;
     }
 }

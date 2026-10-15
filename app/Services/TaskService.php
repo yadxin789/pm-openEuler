@@ -201,10 +201,15 @@ class TaskService
                 throw new \RuntimeException('不支持的文件类型');
             }
 
+            // 为旧版本生成**独立的快照文件**（真实复制一份），
+            // 而不是只记录一个指向同一个文件的路径——
+            // 否则旧版本被彻底删除时，历史版本的可追溯性会一并消失。
+            $snapshotPath = $this->createFileSnapshot($currentFile);
+
             FileVersion::create([
                 'file_id' => $currentFile->id,
                 'version' => $currentFile->version,
-                'path' => $currentFile->path,
+                'path' => $snapshotPath,
                 'uploader_id' => $currentFile->uploader_id,
                 'auditor_id' => $currentFile->auditor_id,
                 'status' => 'approved',
@@ -255,6 +260,46 @@ class TaskService
                 ));
             }
         });
+
+        // 事务成功后再裁剪历史快照：超出保留上限的旧版本（快照文件 + 版本记录）
+        // 一并清理，避免任务被反复更新导致磁盘无限膨胀。
+        TrashService::pruneFileHistory($task);
+    }
+
+    /**
+     * 为文件生成独立的历史版本快照。
+     *
+     * 快照存放在任务文件目录下的 history/ 子目录：
+     *   project-{projectId}/task-{taskId}/history/{fileId}_v{version}.{ext}
+     * 与协作文档的快照机制保持一致：真实复制一份文件，而不是只记录同一路径，
+     * 否则旧版本文件被彻底删除时，历史版本会一并消失。
+     *
+     * @return string|null 快照的相对路径；源文件不存在时返回 null（此时不记录快照，避免产生死记录）
+     */
+    private function createFileSnapshot(File $file): ?string
+    {
+        $disk = Storage::disk('file_repository');
+
+        if (empty($file->path) || !file_exists($disk->path($file->path))) {
+            return null;
+        }
+
+        $extension = pathinfo($file->path, PATHINFO_EXTENSION);
+        $snapshotPath = dirname($file->path)
+            . '/history/'
+            . $file->getKey() . '_v' . $file->version
+            . ($extension !== '' ? '.' . $extension : '');
+
+        try {
+            $disk->makeDirectory(dirname($snapshotPath));
+            $disk->copy($file->path, $snapshotPath);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        return $snapshotPath;
     }
 
     /**

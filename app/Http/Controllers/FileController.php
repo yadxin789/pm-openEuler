@@ -249,16 +249,21 @@ class FileController extends Controller
             'file' => 'required|file',
         ]);
 
-        // 删除旧文件
-        Storage::disk('file_repository')->delete($file->path);
-
-        // 上传新文件
         $newFile = $request->file('file');
         $originalName = $newFile->getClientOriginalName();
         $newVersion = $file->version + 1;
         $fileName = uniqid() . "_v{$newVersion}." . $newFile->getClientOriginalExtension();
-        
+
+        // 1. 先把新文件落盘（失败会抛异常，旧文件与旧记录保持原样，不会产生损坏）
         $path = $newFile->storeAs("department-".$file->department_id, $fileName, 'file_repository');
+
+        if (!$path) {
+            return redirect()->back()->with('error', '文件保存失败，请重试');
+        }
+
+        // 2. 记录指向新文件之后，再删除旧文件。
+        //    顺序不可颠倒：若先删旧文件而后续更新失败，就会出现「记录还在、文件已丢」的不可恢复损坏。
+        $oldPath = $file->path;
 
         $file->update([
             'name' => $fileName,
@@ -268,6 +273,10 @@ class FileController extends Controller
             'mime_type' => $newFile->getMimeType(),
             'version' => $newVersion,
         ]);
+
+        if (!empty($oldPath) && $oldPath !== $path) {
+            Storage::disk('file_repository')->delete($oldPath);
+        }
 
         return redirect()->back()->with('success', '文件更新成功');
     }

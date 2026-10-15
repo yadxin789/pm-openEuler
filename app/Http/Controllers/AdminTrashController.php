@@ -101,7 +101,9 @@ class AdminTrashController extends Controller
         $item = $config['model']::onlyTrashed()->findOrFail($id);
 
         $name = $this->displayName($type, $item, $config['field']);
-        TrashService::forceDelete($item);
+        // 深度删除：容器型内容（项目/任务/部门/模板/知识库）先逐条清理子记录与物理文件，
+        // 再删除父记录，避免数据库 CASCADE 硬删子记录时留下孤儿文件。
+        TrashService::forceDeleteDeep($item);
 
         OperationLogHelper::log('回收站', '彻底删除', "管理员彻底删除{$config['label']}「{$name}」（ID:{$id}），物理文件已一并清理");
 
@@ -170,7 +172,7 @@ class AdminTrashController extends Controller
 
         foreach ($items as $item) {
             $names[] = $this->displayName($type, $item, $config['field']);
-            TrashService::forceDelete($item);
+            TrashService::forceDeleteDeep($item);
         }
 
         if (!empty($names)) {

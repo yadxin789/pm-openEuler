@@ -20,9 +20,16 @@ Artisan::command('inspire', function () {
 // 每天凌晨 0 点自动刷新项目状态、任务状态、进度和统计数据
 Schedule::command('projects:refresh-status')->dailyAt('00:00');
 
-// 每天凌晨 3:30 清理回收站中超过保留期限的内容（彻底删除，含物理文件与历史快照）
+// 每天凌晨 3:30 清理回收站中超过保留期限的内容（彻底删除，含物理文件与历史快照），
+// 以及语音会议里已过期的临时演示文件
 Schedule::command('trash:purge-expired')
     ->dailyAt('03:30')
+    ->withoutOverlapping();
+
+// 每天凌晨 4:00 巡检物理文件（兜底保障）：
+// 清理孤儿文件与空目录，双向核对「数据库记录 ↔ 磁盘文件」是否一一对应
+Schedule::command('files:gc --fix --purge-dead')
+    ->dailyAt('04:00')
     ->withoutOverlapping();
 
 /*

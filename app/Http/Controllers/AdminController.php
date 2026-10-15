@@ -16,6 +16,7 @@ use App\Models\File;
 use App\Models\OperationLog;
 use App\Helpers\OperationLogHelper;
 use App\Notifications\SystemNotification;
+use App\Services\TrashService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 
@@ -79,11 +80,17 @@ class AdminController extends Controller
     {
         $user = User::withTrashed()->findOrFail($userId);
         $userName = $user->name;
+
+        // 硬删用户会触发大量外键 CASCADE（files / messages / tasks / projects …），
+        // 这些级联由数据库执行、不经过 Eloquent，因此必须先把其名下的物理文件清干净，
+        // 否则头像、任务文件、聊天附件都会变成无人引用的孤儿文件。
+        TrashService::purgeUserAssets($user);
+
         $user->forceDelete();
 
-        OperationLogHelper::log('用户管理', '彻底删除用户', "管理员彻底删除了用户「{$userName}」");
+        OperationLogHelper::log('用户管理', '彻底删除用户', "管理员彻底删除了用户「{$userName}」及其关联的文件、任务与项目");
 
-        return redirect()->route('admin.users.deleted')->with('success', '用户已彻底删除');
+        return redirect()->route('admin.users.deleted')->with('success', '用户及其关联数据已彻底删除');
     }
 
     public function createUser()
