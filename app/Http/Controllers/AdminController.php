@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Department;
 use App\Models\Role;
 use App\Models\Status;
+use App\Models\DefaultMember;
 use App\Models\TaskType;
 use App\Models\Notification;
 use App\Models\Todo;
@@ -212,81 +213,62 @@ class AdminController extends Controller
         return redirect()->route('admin.departments')->with('success', '部门更新成功');
     }
 
+    /**
+     * 软删除部门。
+     *
+     * 业务规则（与硬删语义完全不同）：
+     *   - 部门本身：仅软删（进回收站，15 天后由 trash:purge-expired 自动彻底删除）
+     *   - 部门成员：保留用户账号，仅把 department_id 置空 → 转为普通用户
+     *   - 部门资料 / 任务类型 / 默认成员模板：随部门一起软删（部门专属，部门没了也无意义）
+     *   - 项目 / 任务 / 聊天记录 / 通知 / 文件：完全不动
+     *   - 成员仍可通过原身份（项目 creator_id / 任务 executor_id&auditor_id / 聊天发送人）
+     *     访问自己此前参入的项目
+     *
+     * 与「硬删」对比：硬删方案会触发 users.department_id 外键冲突而失败（RESTRICT），
+     * 还会把成员作为 uploader_id/auditor_id 的 File、CASCADE 的 Project、ExtensionApplication
+     * 等一并物理删除，破坏历史数据。软删方案既避开外键问题、又完整保留成员历史。
+     */
     public function deleteDepartment(Department $department)
     {
         $deptName = $department->name;
 
+        // 提前统计，便于操作日志与提示
+        $userCount = $department->users()->count();
+        $fileCount = $department->departmentFiles()->count();
+        $taskTypeCount = TaskType::where('department_id', $department->id)->count();
+        $defaultMemberCount = DefaultMember::where('department_id', $department->id)->count();
+
         DB::transaction(function () use ($department) {
-            $userIds = $department->users()->pluck('id')->toArray();
+            // 1. 部门成员 → 普通用户：仅清空 department_id，账号与历史数据全部保留
+            $department->users()->update(['department_id' => null]);
 
-            // 获取该部门所有任务 ID
-            $taskIds = $department->tasks()->pluck('id')->toArray();
-
-            if (!empty($taskIds)) {
-                // 删除任务关联的文件（files.task_id cascade）
-                \App\Models\File::whereIn('task_id', $taskIds)->delete();
-                // 删除任务的延期申请（extension_applications.task_id cascade）
-                \App\Models\ExtensionApplication::whereIn('task_id', $taskIds)->delete();
+            // 2. 部门资料文件 → 物理删除（含物理文件，避免遗留孤儿）。
+            //    走 TrashService::forceDelete 走「先删记录、后删文件」的安全流程；
+            //    这里没有走回收站（部门专属，部门没了它们也没业务价值），
+            //    如果将来需要「部门资料也能恢复」，再改为软删除。
+            foreach ($department->departmentFiles()->get() as $deptFile) {
+                TrashService::forceDelete($deptFile);
             }
 
-            if (!empty($userIds)) {
-                // 删除通知
-                \App\Models\Notification::whereIn('user_id', $userIds)->delete();
-                \App\Models\Notification::whereIn('sender_id', $userIds)->delete();
+            // 3. 部门任务类型 → 物理删除（无物理文件）
+            TaskType::where('department_id', $department->id)->delete();
 
-                // 删除待办
-                \App\Models\Todo::whereIn('user_id', $userIds)->delete();
+            // 4. 部门默认成员模板 → 物理删除（无物理文件）
+            DefaultMember::where('department_id', $department->id)->delete();
 
-                // 删除消息
-                \App\Models\Message::whereIn('user_id', $userIds)->delete();
-                \App\Models\Message::whereIn('receiver_id', $userIds)->delete();
-
-                // 删除项目日志
-                \App\Models\ProjectLog::whereIn('user_id', $userIds)->delete();
-
-                // 删除用户创建的 project（creator_id 关联）
-                \App\Models\Project::whereIn('creator_id', $userIds)->delete();
-
-                // 删除用户上传/审核的文件
-                \App\Models\File::whereIn('uploader_id', $userIds)->delete();
-                \App\Models\File::whereIn('auditor_id', $userIds)->delete();
-
-                // 删除文件版本
-                \App\Models\FileVersion::whereIn('uploader_id', $userIds)->delete();
-                \App\Models\FileVersion::whereIn('auditor_id', $userIds)->delete();
-
-                // 删除延期申请
-                \App\Models\ExtensionApplication::whereIn('applicant_id', $userIds)->delete();
-                \App\Models\ExtensionApplication::whereIn('approver_id', $userIds)->delete();
-
-                // 删除默认成员
-                \App\Models\DefaultMember::whereIn('executor_id', $userIds)->delete();
-                \App\Models\DefaultMember::whereIn('auditor_id', $userIds)->delete();
-
-                // 删除模板任务
-                \App\Models\TemplateTask::whereIn('executor_id', $userIds)->delete();
-                \App\Models\TemplateTask::whereIn('auditor_id', $userIds)->delete();
-            }
-
-            // 删除该部门的所有任务
-            $department->tasks()->delete();
-
-            // 删除该部门的所有任务类型
-            \App\Models\TaskType::where('department_id', $department->id)->delete();
-
-            // 删除该部门的所有用户成员
-            $department->users()->delete();
-
-            // 删除该部门的部门文件
-            $department->departmentFiles()->delete();
-
-            // 最后删除部门
+            // 5. 软删部门本身（Department 模型已加 SoftDeletes trait，进回收站 15 天）
             $department->delete();
         });
 
-        OperationLogHelper::log('部门管理', '删除部门', "管理员删除部门「{$deptName}」及其所有用户和任务");
+        OperationLogHelper::log('部门管理', '软删除部门', sprintf(
+            '管理员软删除部门「%s」：%d 名成员转为普通用户、%d 个资料文件、%d 个任务类型、%d 个默认成员模板随部门进入回收站（项目、任务、聊天记录、文件等成员历史数据均保留，成员仍可通过原身份访问自己此前参入的项目）',
+            $deptName, $userCount, $fileCount, $taskTypeCount, $defaultMemberCount
+        ));
 
-        return redirect()->route('admin.departments')->with('success', '部门及其所有用户和任务已删除');
+        return redirect()->route('admin.departments')->with('success', sprintf(
+            '部门「%s」已删除，%d 名成员转为普通用户（项目、任务不受影响，成员仍可访问自己此前参入的项目）',
+            $deptName, $userCount
+        ));
     }
 
     public function roles()
