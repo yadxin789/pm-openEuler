@@ -87,7 +87,9 @@ class TrashService
      */
     public const PURGE_MAP = [
         CollabDocument::class => ['disk' => 'file_repository', 'column' => 'storage_path', 'history' => 'collab'],
-        File::class           => ['disk' => 'file_repository', 'column' => 'path',         'history' => 'taskfile'],
+        // 注意：任务文件刻意**不配 history**。版本快照归任务所有、由保留上限统一裁剪，
+        // 单个文件记录被彻底删除时不应连带删掉历史版本；任务被删除时整目录清理。
+        File::class           => ['disk' => 'file_repository', 'column' => 'path'],
         DepartmentFile::class => ['disk' => 'file_repository', 'column' => 'path'],
         Message::class        => ['disk' => 'public',          'column' => 'file_path'],
         WecomFile::class      => ['disk' => 'wecom_files',     'column' => 'file_path'],
@@ -313,6 +315,30 @@ class TrashService
     {
         foreach (File::withTrashed()->where('task_id', $task->getKey())->get() as $file) {
             self::forceDelete($file);
+        }
+
+        // 任务即将消失，其整个文件目录（含历史版本快照）已无任何引用，
+        // 整目录清理，避免残留快照文件与空目录；
+        // file_versions 记录由 task_id 外键 CASCADE 自动清除。
+        self::purgeTaskDirectory($task);
+    }
+
+    /**
+     * 删除任务的文件目录 project-{projectId}/task-{taskId}/，父目录空了也一并移除。
+     */
+    protected static function purgeTaskDirectory(Task $task): void
+    {
+        try {
+            $disk = Storage::disk('file_repository');
+            $dir = 'project-' . $task->project_id . '/task-' . $task->getKey();
+
+            if ($disk->exists($dir)) {
+                $disk->deleteDirectory($dir);
+            }
+
+            self::removeIfEmpty($disk, 'project-' . $task->project_id);
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 
@@ -562,11 +588,10 @@ class TrashService
         $keep = max(1, (int) config('pm.file_version_keep', 3));
 
         $versions = DB::table('file_versions')
-            ->join('files', 'files.id', '=', 'file_versions.file_id')
-            ->where('files.task_id', $task->getKey())
-            ->orderByDesc('file_versions.created_at')
-            ->orderByDesc('file_versions.id')
-            ->get(['file_versions.id', 'file_versions.path']);
+            ->where('task_id', $task->getKey())
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get(['id', 'path']);
 
         if ($versions->count() <= $keep) {
             return;

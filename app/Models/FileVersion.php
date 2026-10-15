@@ -7,8 +7,16 @@ use Illuminate\Database\Eloquent\Model;
 class FileVersion extends Model
 {
     protected $fillable = [
-        'file_id', 'version', 'path', 'uploader_id', 'auditor_id', 'status'
+        'file_id', 'task_id', 'version', 'path', 'uploader_id', 'auditor_id', 'status'
     ];
+
+    /**
+     * 所属任务（历史版本快照归任务所有，任务删除时随之清理）。
+     */
+    public function task()
+    {
+        return $this->belongsTo(Task::class);
+    }
 
     public function file()
     {

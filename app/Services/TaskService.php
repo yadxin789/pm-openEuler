@@ -206,14 +206,18 @@ class TaskService
             // 否则旧版本被彻底删除时，历史版本的可追溯性会一并消失。
             $snapshotPath = $this->createFileSnapshot($currentFile);
 
-            FileVersion::create([
-                'file_id' => $currentFile->id,
-                'version' => $currentFile->version,
-                'path' => $snapshotPath,
-                'uploader_id' => $currentFile->uploader_id,
-                'auditor_id' => $currentFile->auditor_id,
-                'status' => 'approved',
-            ]);
+            // 快照生成失败时不写版本记录，避免留下指向不存在文件的死记录
+            if ($snapshotPath) {
+                FileVersion::create([
+                    'file_id' => $currentFile->id,
+                    'task_id' => $task->id,
+                    'version' => $currentFile->version,
+                    'path' => $snapshotPath,
+                    'uploader_id' => $currentFile->uploader_id,
+                    'auditor_id' => $currentFile->auditor_id,
+                    'status' => 'approved',
+                ]);
+            }
 
             $newVersion = $currentFile->version + 1;
             $fileName = uniqid() . "_v{$newVersion}." . $extension;

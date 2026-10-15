@@ -383,12 +383,7 @@ class AuditFiles extends Command
         $count = 0;
 
         foreach ($items as $item) {
-            if ($item instanceof \App\Models\File) {
-                // 任务文件：连带历史快照目录一起清理
-                TrashService::forceDelete($item);
-            } else {
-                TrashService::forceDelete($item);
-            }
+            TrashService::forceDelete($item);
             $count++;
         }
 
