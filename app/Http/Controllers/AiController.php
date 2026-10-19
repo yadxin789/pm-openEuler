@@ -14,22 +14,38 @@ class AiController extends Controller
 
     /**
      * AI 开通引导页（3 步：选提供商 → 获取 Key → 粘贴并测试）
+     * 仅管理员可访问配置；非管理员跳转「尚未开通」提示页。
      */
     public function welcome()
     {
+        if (!$this->isAdmin()) {
+            return redirect()->route('ai.notice');
+        }
         $current = AiSetting::current();
         $providers = AiSetting::providers();
         return view('ai.welcome', compact('current', 'providers'));
     }
 
     /**
-     * AI 聊天页（未配置则引导开通）
+     * 「管理员尚未开通」提示页（非管理员 / 未启用时展示）
+     */
+    public function notice()
+    {
+        return view('ai.notice');
+    }
+
+    /**
+     * AI 聊天页
+     * - 未启用：管理员跳转开通引导，非管理员跳转「尚未开通」提示。
+     * - 已启用：所有用户均可使用。
      */
     public function chat()
     {
         $setting = AiSetting::current();
         if (!$setting->isAvailable()) {
-            return redirect()->route('ai.welcome');
+            return $this->isAdmin()
+                ? redirect()->route('ai.welcome')
+                : redirect()->route('ai.notice');
         }
         $history = Session::get('ai_chat_history', []);
         $providerInfo = $setting->providerInfo();
@@ -176,5 +192,13 @@ class AiController extends Controller
             return;
         }
         abort(403, '仅管理员可进行 AI 设置。');
+    }
+
+    /**
+     * 当前登录用户是否为管理员
+     */
+    protected function isAdmin(): bool
+    {
+        return auth()->check() && auth()->user()->isAdmin();
     }
 }

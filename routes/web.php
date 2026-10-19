@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
 
     // AI 智能助手（开通引导 / 聊天 / 设置 / 自然语言生成文档）
     Route::get('/ai', [AiController::class, 'welcome'])->name('ai.welcome');
+    Route::get('/ai/notice', [AiController::class, 'notice'])->name('ai.notice');
     Route::get('/ai/chat', [AiController::class, 'chat'])->name('ai.chat');
     Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask');
     Route::post('/ai/clear', [AiController::class, 'clear'])->name('ai.clear');
