@@ -68,6 +68,19 @@
                             </div>
                         </div>
 
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">每用户限流 · 每分钟（次）</label>
+                                <input type="number" min="1" max="1000" name="rate_limit_minute" class="form-control" value="{{ $setting->rate_limit_minute ?? 30 }}">
+                                <div class="form-text">每个用户每分钟最多调用 AI 的次数（防单个用户刷爆共享额度）</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">每用户限流 · 每日（次）</label>
+                                <input type="number" min="1" max="100000" name="rate_limit_daily" class="form-control" value="{{ $setting->rate_limit_daily ?? 200 }}">
+                                <div class="form-text">每个用户每天最多调用 AI 的总次数</div>
+                            </div>
+                        </div>
+
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="enabled" id="enabled" value="1" {{ $setting->enabled ? 'checked' : '' }}>
                             <label class="form-check-label" for="enabled">启用 AI 功能</label>

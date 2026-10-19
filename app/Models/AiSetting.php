@@ -9,12 +9,15 @@ class AiSetting extends Model
     protected $fillable = [
         'provider', 'api_key', 'base_url', 'model',
         'vision_enabled', 'vision_model', 'temperature', 'max_tokens', 'enabled',
+        'rate_limit_minute', 'rate_limit_daily',
     ];
 
     protected $casts = [
         'vision_enabled' => 'boolean',
         'enabled' => 'boolean',
         'temperature' => 'decimal:2',
+        'rate_limit_minute' => 'integer',
+        'rate_limit_daily' => 'integer',
     ];
 
     /**

@@ -112,6 +112,8 @@ class AiController extends Controller
             'vision_model' => 'nullable|string|max:100',
             'temperature' => 'required|numeric|min:0|max:2',
             'max_tokens' => 'required|integer|min:100|max:8000',
+            'rate_limit_minute' => 'required|integer|min:1|max:1000',
+            'rate_limit_daily' => 'required|integer|min:1|max:100000',
             'enabled' => 'boolean',
         ]);
 
@@ -170,7 +172,18 @@ class AiController extends Controller
             return back()->with('error', 'AI 尚未配置，请先在「AI 智能助手」中配置 API Key 并启用。');
         }
 
-        $result = $ai->generateDocument((int) $request->template_id, $request->description);
+        // 服务端在途锁：防止同一用户重复/并发提交，浪费共享额度
+        $lockKey = 'ai_doc_generate:' . (auth()->id() ?: 'guest');
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 180);
+        if (!$lock->get()) {
+            return back()->with('error', '您有文档正在生成中，请稍候再试。');
+        }
+
+        try {
+            $result = $ai->generateDocument((int) $request->template_id, $request->description);
+        } finally {
+            $lock->release();
+        }
 
         Session::put('ai_doc_result', [
             'template_id' => $template->id,

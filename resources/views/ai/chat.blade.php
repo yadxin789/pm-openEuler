@@ -74,10 +74,15 @@ document.addEventListener('DOMContentLoaded', function () {
         scrollToBottom();
     }
 
+    let sending = false;
+
     async function send() {
         const message = input.value.trim();
-        if (!message) return;
+        if (!message || sending) return;
+        sending = true;
         input.value = '';
+        sendBtn.disabled = true;
+        sendBtn.textContent = '发送中…';
         appendMessage('user', message);
 
         const thinking = appendMessage('assistant', '正在思考…');
@@ -87,10 +92,20 @@ document.addEventListener('DOMContentLoaded', function () {
             const fd = new FormData();
             fd.append('message', message);
             const res = await fetch('{{ route("ai.ask") }}', { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content } });
-            const data = await res.json();
-            thinkingWrap.textContent = data.reply || '抱歉，暂无回复。';
+            if (!res.ok) {
+                let msg = '请求失败（' + res.status + '）。';
+                try { const j = await res.json(); msg = j.message || msg; } catch (e) {}
+                thinkingWrap.textContent = msg;
+            } else {
+                const data = await res.json();
+                thinkingWrap.textContent = data.reply || '抱歉，暂无回复。';
+            }
         } catch (e) {
             thinkingWrap.textContent = '网络错误，请重试。';
+        } finally {
+            sending = false;
+            sendBtn.disabled = false;
+            sendBtn.textContent = '发送';
         }
         scrollToBottom();
     }

@@ -46,7 +46,7 @@
                     <div class="card">
                         <div class="card-header bg-white fw-bold">② 用自然语言描述，AI 生成文档</div>
                         <div class="card-body">
-                            <form method="POST" action="{{ route('ai.docs.generate') }}">
+                            <form method="POST" action="{{ route('ai.docs.generate') }}" id="generate-form">
                                 @csrf
                                 <input type="hidden" name="template_id" id="template_id" required>
                                 <div class="mb-3">
@@ -57,7 +57,7 @@
                                     <label class="form-label">自然语言描述（数据 / 参数 / 内容要求）</label>
                                     <textarea name="description" rows="6" class="form-control" placeholder="例如：为我生成一份「XXX产品研发项目」立项报告，项目名称为…，产品型号为…，周期为2026-10-01至2026-12-31，主要交付物包括：……"></textarea>
                                 </div>
-                                <button class="btn btn-primary"><i class="fa fa-magic me-1"></i>生成文档</button>
+                                <button class="btn btn-primary" id="generate-btn"><i class="fa fa-magic me-1"></i>生成文档</button>
                             </form>
 
                             {{-- 生成结果 --}}
@@ -96,6 +96,15 @@ document.addEventListener('DOMContentLoaded', function () {
             tid.value = item.dataset.id;
             st.value = item.dataset.name + ' —— ' + item.dataset.desc;
         });
+    });
+
+    // 防重复提交：提交时禁用按钮，避免重复调用 AI 浪费共享额度
+    const form = document.getElementById('generate-form');
+    const btn = document.getElementById('generate-btn');
+    form.addEventListener('submit', function () {
+        if (btn.disabled) { event.preventDefault(); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>生成中…（请勿重复点击）';
     });
 });
 function copyDoc() {

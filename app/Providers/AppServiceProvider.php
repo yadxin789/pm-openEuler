@@ -5,6 +5,8 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
 use App\Models\Project;
 use App\Models\Task;
 use App\Policies\ProjectPolicy;
@@ -45,6 +47,21 @@ class AppServiceProvider extends ServiceProvider
 
         // 软删除时自动记录「删除人」
         $this->registerTrashDeletingHook();
+
+        // AI 每用户限流（每分钟/每日，管理员可在「AI 设置」调整）
+        RateLimiter::for('ai', function ($request) {
+            $setting = \App\Models\AiSetting::current();
+            $minute = max(1, (int) $setting->rate_limit_minute ?: 30);
+            $daily = max(1, (int) $setting->rate_limit_daily ?: 200);
+
+            // 按用户隔离；未登录退化为 IP
+            $key = $request->user()?->id ?: 'guest:' . $request->ip();
+
+            return [
+                Limit::perMinute($minute)->by($key),
+                Limit::perDay($daily)->by($key),
+            ];
+        });
     }
 
     /**

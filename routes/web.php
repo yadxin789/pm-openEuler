@@ -52,13 +52,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/ai', [AiController::class, 'welcome'])->name('ai.welcome');
     Route::get('/ai/notice', [AiController::class, 'notice'])->name('ai.notice');
     Route::get('/ai/chat', [AiController::class, 'chat'])->name('ai.chat');
-    Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask');
+    Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask')->middleware('throttle:ai');
     Route::post('/ai/clear', [AiController::class, 'clear'])->name('ai.clear');
     Route::get('/ai/settings', [AiController::class, 'settings'])->name('ai.settings');
     Route::put('/ai/settings', [AiController::class, 'updateSettings'])->name('ai.settings.update');
     Route::get('/ai/settings/test', [AiController::class, 'test'])->name('ai.settings.test');
     Route::get('/ai/docs', [AiController::class, 'docs'])->name('ai.docs');
-    Route::post('/ai/docs/generate', [AiController::class, 'generateDoc'])->name('ai.docs.generate');
+    Route::post('/ai/docs/generate', [AiController::class, 'generateDoc'])->name('ai.docs.generate')->middleware('throttle:ai');
 
     // 个人回收站：每个人管理「自己删除的 / 自己创建的」内容（管理员只有统一回收站入口）
     Route::get('/my-trash', [MyTrashController::class, 'index'])->name('my-trash');
