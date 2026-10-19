@@ -19,6 +19,11 @@
                 </div>
             </div>
 
+            <div class="alert alert-info py-2 mb-3 small d-flex align-items-center gap-2">
+                <i class="fa fa-info-circle"></i>
+                <span>当前 AI 用量限制：每分钟 <strong>{{ $rateLimit['minute'] }}</strong> 次、每日 <strong>{{ $rateLimit['daily'] }}</strong> 次（由管理员在「AI 设置」中调整）。</span>
+            </div>
+
             <div class="card">
                 <div class="card-body" id="chat-box" style="height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;background:#f8f9fa;">
                     {{-- 历史消息 --}}

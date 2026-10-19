@@ -49,7 +49,11 @@ class AiController extends Controller
         }
         $history = Session::get('ai_chat_history', []);
         $providerInfo = $setting->providerInfo();
-        return view('ai.chat', compact('history', 'providerInfo'));
+        $rateLimit = [
+            'minute' => (int) ($setting->rate_limit_minute ?: 30),
+            'daily' => (int) ($setting->rate_limit_daily ?: 200),
+        ];
+        return view('ai.chat', compact('history', 'providerInfo', 'rateLimit'));
     }
 
     /**
