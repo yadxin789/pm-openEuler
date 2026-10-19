@@ -26,6 +26,7 @@ use App\Http\Controllers\CollabDocumentController;
 use App\Http\Controllers\AdminTrashController;
 use App\Http\Controllers\MyTrashController;
 use App\Http\Controllers\VoiceController;
+use App\Http\Controllers\AiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
@@ -46,6 +47,17 @@ Route::prefix('wecom')->name('wecom.')->group(function () {
 // 认证路由
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // AI 智能助手（开通引导 / 聊天 / 设置 / 自然语言生成文档）
+    Route::get('/ai', [AiController::class, 'welcome'])->name('ai.welcome');
+    Route::get('/ai/chat', [AiController::class, 'chat'])->name('ai.chat');
+    Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask');
+    Route::post('/ai/clear', [AiController::class, 'clear'])->name('ai.clear');
+    Route::get('/ai/settings', [AiController::class, 'settings'])->name('ai.settings');
+    Route::put('/ai/settings', [AiController::class, 'updateSettings'])->name('ai.settings.update');
+    Route::get('/ai/settings/test', [AiController::class, 'test'])->name('ai.settings.test');
+    Route::get('/ai/docs', [AiController::class, 'docs'])->name('ai.docs');
+    Route::post('/ai/docs/generate', [AiController::class, 'generateDoc'])->name('ai.docs.generate');
 
     // 个人回收站：每个人管理「自己删除的 / 自己创建的」内容（管理员只有统一回收站入口）
     Route::get('/my-trash', [MyTrashController::class, 'index'])->name('my-trash');

@@ -201,6 +201,13 @@
                                 <i class="fa fa-home me-2"></i> 首页
                             </a>
                         </li>
+
+                        <!-- AI 智能助手（所有角色可用） -->
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('ai.*') ? 'active' : '' }}" href="{{ route('ai.chat') }}">
+                                <i class="fa fa-robot me-2"></i> AI 智能助手
+                            </a>
+                        </li>
                         
                         <!-- 管理员菜单 -->
                         @if($isAdmin)
