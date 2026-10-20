@@ -225,6 +225,11 @@ class AiController extends Controller
         $this->assertOwner($conversation);
         $validated = $request->validate(['title' => 'required|string|max:200']);
         $conversation->update(['title' => $validated['title']]);
+
+        // AJAX 直接返回 JSON：若返回重定向，浏览器会用 PATCH 方法跟随跳转导致 405
+        if ($request->ajax()) {
+            return response()->json(['ok' => true, 'title' => $conversation->title]);
+        }
         return back()->with('success', '会话名称已更新');
     }
 
@@ -237,7 +242,8 @@ class AiController extends Controller
         $this->deleteConversationFiles($conversation);
         $conversation->forceDelete();
 
-        if (request()->wantsJson()) {
+        // AJAX 必须返回 JSON：若返回 302，浏览器会用 DELETE 方法跟随跳转到 /ai/chat（405）
+        if (request()->ajax()) {
             return response()->json(['ok' => true]);
         }
         return redirect()->route('ai.chat')->with('success', '会话已删除');
