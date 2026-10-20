@@ -140,7 +140,9 @@ class AiController extends Controller
         // 组装最终投喂文本
         $promptParts = [];
         if ($fileContext !== '') {
-            $promptParts[] = "【用户上传的文件已解析为文本，请基于其内容回答】\n" . $fileContext;
+            $promptParts[] = "【附件说明】以下是用户本轮上传的文件的原始文本内容，由系统自动解析后提供给你，"
+                . "请勿声称看不到或未收到文件内容；可直接引用其中的数据、结论与原文来回答用户提问。\n\n"
+                . $fileContext;
         }
         if ($message !== '') {
             $promptParts[] = $message;
