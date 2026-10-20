@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function () {
         scrollToBottom();
     }
 
-    // 侧栏追加会话（本次提问自动创建的会话）
+    // 侧栏追加会话（本次提问自动创建的会话），结构与服务端渲染保持一致
     function addConversationToSidebar(id, title) {
         const list = document.getElementById('conv-list');
         if (!list) return;
@@ -374,9 +374,83 @@ document.addEventListener('DOMContentLoaded', function () {
             '<a href="' + @json(route('ai.chat')) + '?c=' + id + '" class="flex-fill text-decoration-none" style="min-width:0;">' +
             '<div class="conv-title"></div>' +
             '<div class="conv-meta"><span>2 条</span><span>刚刚</span></div>' +
-            '</a></div>';
+            '</a>' +
+            '<div class="dropdown">' +
+            '<span class="conv-del" data-bs-toggle="dropdown" role="button"><i class="fa fa-ellipsis-v"></i></span>' +
+            '<ul class="dropdown-menu dropdown-menu-end">' +
+            '<li><a class="dropdown-item" href="#" data-toggle-rename="' + id + '" data-current="' + escapeHtml(title) + '">' +
+            '<i class="fa fa-pencil me-1"></i>重命名</a></li>' +
+            '<li><a class="dropdown-item" href="' + @json(url('/ai/conversations')) + '/' + id + '/export">' +
+            '<i class="fa fa-download me-1"></i>导出 Markdown</a></li>' +
+            '<li><hr class="dropdown-divider"></li>' +
+            '<li><a class="dropdown-item text-danger" href="#" data-delete-conv="' + id + '">' +
+            '<i class="fa fa-trash me-1"></i>删除会话</a></li>' +
+            '</ul></div></div>';
         item.querySelector('.conv-title').textContent = title;
+        bindConversationActions(item);
         list.insertBefore(item, list.firstChild);
+    }
+
+    // 会话项的操作绑定（重命名 / 导出 / 删除），动态新增的会话项同样适用
+    function bindConversationActions(scope) {
+        scope.querySelectorAll('[data-toggle-rename]').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const id = this.dataset.toggleRename;
+                const title = prompt('输入新的会话名称：', this.dataset.current || '');
+                if (title === null || String(title).trim() === '') return;
+                const fd = new FormData();
+                fd.append('_method', 'PATCH');
+                fd.append('title', String(title).trim());
+                fetch(@json(url('/ai/conversations')) + '/' + id, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (res) {
+                    return res.json().catch(function () { return {}; });
+                }).then(function (data) {
+                    if (data.ok) {
+                        const item = btn.closest('.conv-item');
+                        if (item) {
+                            const titleEl = item.querySelector('.conv-title');
+                            if (titleEl) titleEl.textContent = data.title;
+                            item.dataset.convTitle = String(data.title).toLowerCase();
+                            btn.dataset.current = data.title;
+                        }
+                        const cur = document.getElementById('current-conv-title');
+                        if (cur && String(conversationId) === String(id)) {
+                            cur.textContent = data.title;
+                        }
+                    } else {
+                        showGlobalModal('danger', '重命名失败', '请刷新后重试。');
+                    }
+                });
+            });
+        });
+
+        scope.querySelectorAll('[data-delete-conv]').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (!confirm('确定删除该会话及其全部附件吗？此操作不可恢复。')) return;
+                const id = this.dataset.deleteConv;
+                fetch(@json(url('/ai/conversations')) + '/' + id, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                }).then(function (res) {
+                    if (res.ok) {
+                        if (String(id) === String(conversationId)) {
+                            conversationId = null;
+                            location.href = @json(route('ai.chat'));
+                        } else {
+                            const item = btn.closest('.conv-item');
+                            if (item) item.remove();
+                        }
+                    } else {
+                        showGlobalModal('danger', '删除失败', '会话删除失败，请刷新后重试。');
+                    }
+                });
+            });
+        });
     }
 
     // ---------- 待上传附件 chips ----------
@@ -567,45 +641,8 @@ document.addEventListener('DOMContentLoaded', function () {
         newConvSkill.value = skillSelect.value;
     });
 
-    document.querySelectorAll('[data-delete-conv]').forEach(function (btn) {
-        btn.addEventListener('click', async function (e) {
-            e.preventDefault();
-            if (!confirm('确定删除该会话及其全部附件吗？此操作不可恢复。')) return;
-            const id = this.dataset.deleteConv;
-            const res = await fetch(@json(url('/ai/conversations')) + '/' + id, {
-                method: 'DELETE',
-                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            if (res.ok) {
-                const item = this.closest('.conv-item');
-                if (id === String(conversationId)) {
-                    window.location.href = @json(route('ai.chat'));
-                } else {
-                    item.remove();
-                }
-            } else {
-                showGlobalModal('danger', '删除失败', '会话删除失败，请刷新后重试。');
-            }
-        });
-    });
-
-    document.querySelectorAll('[data-toggle-rename]').forEach(function (btn) {
-        btn.addEventListener('click', function (e) {
-            e.preventDefault();
-            const id = this.dataset.toggleRename;
-            const current = this.dataset.current;
-            const title = prompt('输入新的会话名称：', current);
-            if (!title) return;
-            const fd = new FormData();
-            fd.append('_method', 'PATCH');
-            fd.append('title', title);
-            fetch(@json(url('/ai/conversations')) + '/' + id, {
-                method: 'POST',
-                body: fd,
-                headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' }
-            }).then(function () { window.location.reload(); });
-        });
-    });
+    // 绑定侧栏会话操作（重命名 / 导出 / 删除）
+    bindConversationActions(document);
 
     document.querySelectorAll('[data-suggest]').forEach(function (el) {
         el.addEventListener('click', function () {
