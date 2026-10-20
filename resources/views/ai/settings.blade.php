@@ -151,23 +151,29 @@
                                                     <label class="form-check-label small" for="en-{{ $row->id }}">启用</label>
                                                 </div>
                                                 @if(!$row->is_default)
-                                                <a href="{{ route('ai.providers.default', $row->key) }}" class="btn btn-sm btn-outline-secondary"
-                                                   onclick="event.preventDefault(); if(confirm('设为默认供应商：{{ $row->name }}？')) document.getElementById('pdefault-{{ $row->id }}').submit();">设默认</a>
+                                                <form method="POST" action="{{ route('ai.providers.default', $row->key) }}" class="d-inline">
+                                                    @csrf
+                                                    <button class="btn btn-sm btn-outline-secondary">设默认</button>
+                                                </form>
                                                 @endif
-                                                <a href="{{ route('ai.providers.test', $row->key) }}" class="btn btn-sm btn-outline-info">测试</a>
-                                                <a href="{{ route('ai.providers.sync', $row->key) }}" class="btn btn-sm btn-outline-secondary">补模型</a>
+                                                <form method="POST" action="{{ route('ai.providers.test', $row->key) }}" class="d-inline">
+                                                    @csrf
+                                                    <button class="btn btn-sm btn-outline-info">测试连接</button>
+                                                </form>
+                                                <form method="POST" action="{{ route('ai.providers.sync', $row->key) }}" class="d-inline">
+                                                    @csrf
+                                                    <button class="btn btn-sm btn-outline-secondary">补模型</button>
+                                                </form>
                                                 @if($row->hasRealApiKey())
-                                                <a href="{{ route('ai.providers.remove', $row->key) }}" class="btn btn-sm btn-outline-danger"
-                                                   onclick="event.preventDefault(); if(confirm('清除 {{ $row->name }} 的密钥并停用？')) document.getElementById('premove-{{ $row->id }}').submit();">清 Key</a>
+                                                <form method="POST" action="{{ route('ai.providers.remove', $row->key) }}" class="d-inline"
+                                                      onsubmit="return confirm('清除 {{ $row->name }} 的密钥并停用？');">
+                                                    @csrf @method('DELETE')
+                                                    <button class="btn btn-sm btn-outline-danger">清 Key</button>
+                                                </form>
                                                 @endif
                                             </div>
                                         </form>
-                                        @if(!$row->is_default)
-                                        <form id="pdefault-{{ $row->id }}" method="POST" action="{{ route('ai.providers.default', $row->key) }}" class="d-none">@csrf</form>
-                                        @endif
-                                        @if($row->hasRealApiKey())
-                                        <form id="premove-{{ $row->id }}" method="POST" action="{{ route('ai.providers.remove', $row->key) }}" class="d-none">@csrf @method('DELETE')</form>
-                                        @endif
+
                                     </td>
                                 </tr>
                                 @endforeach
