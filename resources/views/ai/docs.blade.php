@@ -54,6 +54,16 @@
                                     <input type="text" class="form-control" id="selected-template" readonly placeholder="请先在左侧选择模板">
                                 </div>
                                 <div class="mb-3">
+                                    <label class="form-label">选择 AI 模型</label>
+                                    <select name="model_id" class="form-select">
+                                        @foreach($models as $m)
+                                        <option value="{{ $m->id }}" {{ optional($defaultModel)->id === $m->id ? 'selected' : '' }}>
+                                            {{ $m->provider->name ?? '' }} · {{ $m->name }}
+                                        </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
                                     <label class="form-label">自然语言描述（数据 / 参数 / 内容要求）</label>
                                     <textarea name="description" rows="6" class="form-control" placeholder="例如：为我生成一份「XXX产品研发项目」立项报告，项目名称为…，产品型号为…，周期为2026-10-01至2026-12-31，主要交付物包括：……"></textarea>
                                 </div>

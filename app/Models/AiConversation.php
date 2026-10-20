@@ -12,17 +12,23 @@ class AiConversation extends Model
     protected $table = 'ai_conversations';
 
     protected $fillable = [
-        'user_id', 'title', 'skill_slug', 'message_count', 'last_message_at',
+        'user_id', 'title', 'skill_slug', 'model_id', 'message_count', 'last_message_at',
     ];
 
     protected $casts = [
         'last_message_at' => 'datetime',
         'message_count' => 'integer',
+        'model_id' => 'integer',
     ];
 
     public function messages()
     {
         return $this->hasMany(AiMessage::class, 'conversation_id')->orderBy('id');
+    }
+
+    public function model()
+    {
+        return $this->belongsTo(AiModel::class, 'model_id');
     }
 
     public function attachments()

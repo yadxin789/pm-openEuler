@@ -36,12 +36,26 @@ class AiSetting extends Model
 
     /**
      * 是否已启用且已配置 API Key
+     * 兼容多供应商：任意一家已启用且填了 Key 也算可用
      */
     public function isAvailable(): bool
     {
-        return $this->enabled
-            && $this->api_key
-            && !str_starts_with((string) $this->api_key, 'sk-xxxx');
+        if (!$this->enabled) {
+            return false;
+        }
+        if ($this->api_key && !str_starts_with((string) $this->api_key, 'sk-xxxx')) {
+            return true;
+        }
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('ai_providers')) {
+                return AiProvider::where('enabled', true)
+                    ->whereNotNull('api_key')
+                    ->exists();
+            }
+        } catch (\Throwable $e) {
+            // 表尚未创建时忽略，回退到原有判断
+        }
+        return false;
     }
 
     /**

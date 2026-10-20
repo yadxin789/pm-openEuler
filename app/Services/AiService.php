@@ -13,11 +13,13 @@ use App\Ai\Tools\QueryTasks;
 use App\Ai\Tools\QueryTodos;
 use App\Ai\Tools\QueryUsers;
 use App\Ai\Tools\SearchKnowledgeBase;
+use App\Models\AiModel;
+use App\Models\AiProvider;
 use App\Models\AiSetting;
+use Illuminate\Support\Facades\Log;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Messages\Message;
-use Illuminate\Support\Facades\Log;
 
 /**
  * AI 服务：桥接「DB 中的 AI 配置」与「Laravel AI SDK」。
@@ -27,9 +29,29 @@ class AiService
 {
     protected AiSetting $config;
 
-    public function __construct(?AiSetting $config = null)
+    /**
+     * 本次调用使用的模型（多模型支持）。null 表示沿用 ai_settings 的单模型配置。
+     */
+    protected ?AiModel $model = null;
+
+    public function __construct(?AiSetting $config = null, ?AiModel $model = null)
     {
         $this->config = $config ?: AiSetting::current();
+        $this->model = $model;
+    }
+
+    /**
+     * 指定本次调用使用的模型（链式调用）
+     */
+    public function useModel(?AiModel $model): static
+    {
+        $this->model = $model;
+        return $this;
+    }
+
+    public function model(): ?AiModel
+    {
+        return $this->model;
     }
 
     public function config(): AiSetting
@@ -39,7 +61,94 @@ class AiService
 
     public function isAvailable(): bool
     {
+        // 多模式下：只要存在任意可用模型即视为可用
+        if ($this->resolveModel() !== null) {
+            return true;
+        }
         return $this->config->isAvailable();
+    }
+
+    /**
+     * 用户可切换的可用模型列表（模型启用 + 供应商启用且已配 Key）
+     */
+    public function availableModels()
+    {
+        return AiModel::usable()->get();
+    }
+
+    /**
+     * 解析要使用的模型：优先指定 id，否则取默认可用模型
+     */
+    public function resolveModel(?int $modelId = null): ?AiModel
+    {
+        if ($modelId) {
+            $found = AiModel::with('provider')->where('id', $modelId)->first();
+            if ($found && $found->isUsable()) {
+                return $found;
+            }
+        }
+        return AiModel::usableDefault();
+    }
+
+    /**
+     * 当前调用使用的模型标识（如 deepseek-chat）
+     */
+    protected function modelKey(): ?string
+    {
+        return $this->model?->model_id ?: ($this->config->model ?: null);
+    }
+
+    /**
+     * 有图片附件时的看图模型：优先同供应商支持视觉的模型
+     */
+    protected function visionModelKeyForImage(): ?string
+    {
+        if ($this->model) {
+            if ($this->model->is_vision) {
+                return $this->model->model_id;
+            }
+            $sibling = $this->model->provider?->enabledModels()
+                ->where('is_vision', true)
+                ->first();
+            return $sibling?->model_id;
+        }
+        // 兼容旧版：ai_settings 中单独配置的视觉模型
+        return ((bool) $this->config->vision_enabled && $this->config->vision_model)
+            ? $this->config->vision_model
+            : null;
+    }
+
+    /**
+     * 是否支持看图
+     */
+    public function visionEnabled(): bool
+    {
+        return $this->visionModelKeyForImage() !== null;
+    }
+
+    /**
+     * 取「供应商 + 密钥」组合：多模型时按模型所属供应商，否则退回旧版单供应商配置
+     *
+     * @return array{0: AiProvider|null, 1: string, 2: ?string, 3: ?string} [供应商, lab值, key, baseUrl]
+     */
+    protected function credentials(): array
+    {
+        $provider = $this->model?->provider;
+        if (!$provider) {
+            $provider = AiProvider::findByKey((string) $this->config->provider);
+        }
+
+        if ($provider) {
+            return [
+                $provider,
+                $provider->lab(),
+                $provider->api_key ?: $this->config->api_key,
+                $provider->base_url ?: $this->config->base_url,
+            ];
+        }
+
+        $info = $this->config->providerInfo();
+        return [null, $info['lab'] ?? 'deepseek', $this->config->api_key, $this->config->base_url];
     }
 
     /**
@@ -47,15 +156,15 @@ class AiService
      */
     protected function applyProviderConfig(): Lab
     {
-        $providerInfo = $this->config->providerInfo();
-        $lab = Lab::from($providerInfo['lab'] ?? 'deepseek');
+        [, $labValue, $key, $baseUrl] = $this->credentials();
+        $lab = Lab::from($labValue ?: 'deepseek');
 
         // key 注入
-        config(["ai.providers.{$lab->value}.key" => $this->config->api_key]);
+        config(["ai.providers.{$lab->value}.key" => $key]);
 
         // base_url 注入（openai-compatible 与 deepseek 均支持 url）
-        if ($this->config->base_url) {
-            config(["ai.providers.{$lab->value}.url" => rtrim($this->config->base_url, '/')]);
+        if ($baseUrl) {
+            config(["ai.providers.{$lab->value}.url" => rtrim($baseUrl, '/')]);
         }
 
         return $lab;
@@ -145,7 +254,7 @@ class AiService
         try {
             $lab = $this->applyProviderConfig();
             $agent = new AnonymousAgent($systemPrompt ?: '你是一个智能助手。', $this->toMessages($history), []);
-            $response = $agent->prompt($userMessage, provider: $lab, model: $this->config->model ?: null);
+            $response = $agent->prompt($userMessage, provider: $lab, model: $this->modelKey());
             return (string) $response;
         } catch (\Throwable $e) {
             Log::error('AI chat 异常: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -192,14 +301,6 @@ class AiService
     }
 
     /**
-     * AI 是否具备「看图」能力（需在 AI 设置中开启视觉并指定视觉模型）
-     */
-    public function visionEnabled(): bool
-    {
-        return (bool) $this->config->vision_enabled && !empty($this->config->vision_model);
-    }
-
-    /**
      * 带工具调用的对话（Function Calling）
      *
      * @param array $history      历史消息数组：[['role'=>'user','content'=>'...'], ...]
@@ -227,10 +328,13 @@ class AiService
                 $instructions .= "\n\n【本次任务的专项要求】\n" . $extraInstructions;
             }
 
-            // 有图片附件且开启了视觉能力时，切换到视觉模型
-            $model = $this->config->model ?: null;
-            if (!empty($attachments) && $this->visionEnabled()) {
-                $model = $this->config->vision_model;
+            // 默认使用会话所选模型；有图片附件且具备看图能力时切到视觉模型
+            $model = $this->modelKey();
+            if (!empty($attachments)) {
+                $vision = $this->visionModelKeyForImage();
+                if ($vision) {
+                    $model = $vision;
+                }
             }
 
             $agent = new AnonymousAgent($instructions, $this->toMessages($history), $tools);
@@ -262,7 +366,7 @@ class AiService
                 . "用户自然语言描述如下：\n{$userDescription}\n\n"
                 . "请先调用 GetDocTemplate 获取模板，再按指引生成完整文档（Markdown）。";
 
-            $response = $agent->prompt($prompt, provider: $lab, model: $this->config->model ?: null, timeout: 180);
+            $response = $agent->prompt($prompt, provider: $lab, model: $this->modelKey(), timeout: 180);
             return (string) $response;
         } catch (\Throwable $e) {
             Log::error('AI generateDocument 异常: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -284,6 +388,47 @@ class AiService
             return ['ok' => true, 'message' => '连接成功！AI 回复：' . mb_substr($result, 0, 60)];
         }
         return ['ok' => false, 'message' => '连接失败，请检查 API Key、Base URL 和网络。' . ($result ? '（AI回复：' . mb_substr($result, 0, 60) . '）' : '')];
+    }
+
+    /**
+     * 测试指定供应商 / 模型的连通性（管理员在设置页逐家验证）
+     */
+    public function testConnectionFor(?AiProvider $provider = null, ?AiModel $model = null): array
+    {
+        // 临时切换本次调用的供应商/模型
+        $originModel = $this->model;
+        if ($model) {
+            $this->model = $model->loadMissing('provider');
+        } elseif ($provider) {
+            $pick = $provider->enabledModels()->first() ?: $provider->models()->first();
+            $this->model = $pick ? $pick->loadMissing('provider') : null;
+        }
+
+        try {
+            [$p, , $key] = $this->credentials();
+            if (!$p || !$p->hasRealApiKey()) {
+                return ['ok' => false, 'message' => '请先为该供应商填写 API Key'];
+            }
+            $backupKey = $this->config->api_key;
+            $backupUrl = $this->config->base_url;
+            // 用供应商自己的凭据覆盖本次调用（不落库）
+            $this->config->forceFill(['api_key' => $key, 'base_url' => $p->base_url]);
+
+            try {
+                $result = $this->chat('你好，请只回复四个字：连接成功。');
+            } finally {
+                $this->config->forceFill(['api_key' => $backupKey, 'base_url' => $backupUrl]);
+            }
+
+            $which = trim(($p->name ?? '该供应商') . ' / ' . ($this->model?->name ?: ($this->model?->model_id ?: '')));
+            if ($result && str_contains($result, '连接成功')) {
+                return ['ok' => true, 'message' => '连接成功！' . $which . ' 回复：' . mb_substr($result, 0, 60)];
+            }
+            return ['ok' => false, 'message' => '连接失败，请检查 API Key、Base URL 与网络。'
+                . ($result ? '（回复：' . mb_substr($result, 0, 60) . '）' : '')];
+        } finally {
+            $this->model = $originModel;
+        }
     }
 
     public function providerInfo(): array

@@ -68,6 +68,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/ai/settings', [AiController::class, 'settings'])->name('ai.settings');
     Route::put('/ai/settings', [AiController::class, 'updateSettings'])->name('ai.settings.update');
     Route::get('/ai/settings/test', [AiController::class, 'test'])->name('ai.settings.test');
+
+    // AI 供应商管理（可同时开通多家）
+    Route::post('/ai/settings/providers/{provider}', [AiController::class, 'saveProvider'])->name('ai.providers.save');
+    Route::post('/ai/settings/providers/{provider}/toggle', [AiController::class, 'toggleProvider'])->name('ai.providers.toggle');
+    Route::post('/ai/settings/providers/{provider}/default', [AiController::class, 'setDefaultProvider'])->name('ai.providers.default');
+    Route::post('/ai/settings/providers/{provider}/test', [AiController::class, 'testProvider'])->name('ai.providers.test');
+    Route::post('/ai/settings/providers/{provider}/sync-models', [AiController::class, 'syncProviderModels'])->name('ai.providers.sync');
+    Route::delete('/ai/settings/providers/{provider}', [AiController::class, 'removeProvider'])->name('ai.providers.remove');
+
+    // AI 模型管理（每个供应商可开放多个模型）
+    Route::post('/ai/settings/models', [AiController::class, 'storeModel'])->name('ai.models.store');
+    Route::put('/ai/settings/models/{model}', [AiController::class, 'updateModel'])->name('ai.models.update')->whereNumber('model');
+    Route::post('/ai/settings/models/{model}/default', [AiController::class, 'setDefaultModel'])->name('ai.models.default')->whereNumber('model');
+    Route::delete('/ai/settings/models/{model}', [AiController::class, 'destroyModel'])->name('ai.models.destroy')->whereNumber('model');
     Route::get('/ai/docs', [AiController::class, 'docs'])->name('ai.docs');
     Route::post('/ai/docs/generate', [AiController::class, 'generateDoc'])->name('ai.docs.generate')->middleware('throttle:ai');
 

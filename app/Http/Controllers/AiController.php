@@ -6,6 +6,8 @@ use App\Models\AiAttachment;
 use App\Models\AiConversation;
 use App\Models\AiDocTemplate;
 use App\Models\AiMessage;
+use App\Models\AiModel;
+use App\Models\AiProvider;
 use App\Models\AiSetting;
 use App\Models\AiSkill;
 use App\Services\AiService;
@@ -54,7 +56,8 @@ class AiController extends Controller
         }
 
         $setting = AiSetting::current();
-        if (!$setting->isAvailable()) {
+        $ai = app(AiService::class);
+        if (!$setting->enabled || !$ai->isAvailable()) {
             return redirect()->route('ai.notice');
         }
 
@@ -79,16 +82,24 @@ class AiController extends Controller
         $messages = $conversation ? $conversation->messages()->with('attachments')->get() : collect();
         $skills = AiSkill::where('enabled', true)->orderBy('id')->get();
 
+        // 用户可切换的 AI 模型（模型启用 + 所属供应商已配置 Key）
+        $models = AiModel::usable()->get();
+        $currentModel = $conversation?->model_id
+            ? AiModel::with('provider')->where('id', $conversation->model_id)->first()
+            : null;
+        $currentModel = ($currentModel && $currentModel->isUsable()) ? $currentModel : AiModel::usableDefault();
+
         $providerInfo = $setting->providerInfo();
         $model = $setting->model;
-        $visionEnabled = (bool) $setting->vision_enabled;
+        $visionEnabled = $ai->visionEnabled();
         $rateLimit = [
             'minute' => (int) ($setting->rate_limit_minute ?: 30),
             'daily' => (int) ($setting->rate_limit_daily ?: 200),
         ];
 
         return view('ai.chat', compact(
-            'conversations', 'conversation', 'messages', 'skills', 'providerInfo', 'rateLimit', 'model', 'visionEnabled'
+            'conversations', 'conversation', 'messages', 'skills', 'providerInfo',
+            'rateLimit', 'model', 'visionEnabled', 'models', 'currentModel'
         ));
     }
 
@@ -105,13 +116,14 @@ class AiController extends Controller
         }
 
         $setting = AiSetting::current();
-        if (!$setting->isAvailable()) {
-            return response()->json(['reply' => '⚠️ AI 尚未开通，请联系系统管理员在「AI 设置」中配置并启用。'], 403);
+        if (!$setting->enabled || !$ai->isAvailable()) {
+            return response()->json(['reply' => '⚠️ AI 尚未开通，请联系系统管理员在「AI 设置」中配置至少一个供应商与模型。'], 403);
         }
 
         $request->validate([
             'message' => 'nullable|string|max:4000',
             'conversation_id' => 'nullable|integer',
+            'model_id' => 'nullable|integer',
             'skill' => 'nullable|string|max:100',
             'images.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,bmp,webp|max:10240',
             'files.*' => 'nullable|file|max:20480',
@@ -125,6 +137,16 @@ class AiController extends Controller
 
         // 定位 / 创建会话
         $conversation = $this->resolveConversation($request->input('conversation_id'), $request->input('skill'));
+
+        // 本次使用的模型：请求指定 > 会话已选 > 系统默认可用模型
+        $modelId = $request->input('model_id') ?: $conversation->model_id;
+        $model = $ai->resolveModel($modelId ? (int) $modelId : null);
+        if (!$model) {
+            return response()->json([
+                'reply' => '⚠️ 当前没有可用的 AI 模型，请管理员在「AI 设置」中配置至少一个供应商 Key 并启用模型。',
+            ], 422);
+        }
+        $ai->useModel($model);
 
         // 技能 → 工具子集 + 专项指令
         $skill = null;
@@ -165,18 +187,26 @@ class AiController extends Controller
 
         $reply = $ai->chatWithTools($prompt, $history, $tools, $aiAttachments, $extraInstructions);
 
+        $modelMeta = [
+            'skill' => $skill ? $skill->slug : null,
+            'model_id' => $model->id,
+            'model' => $model->model_id,
+            'model_name' => $model->name,
+            'provider' => $model->provider?->name,
+        ];
+
         // 落库
         $userMessage = AiMessage::create([
             'conversation_id' => $conversation->id,
             'role' => 'user',
             'content' => $message !== '' ? $message : '（用户仅上传了附件，见下方附件）',
-            'meta' => ['skill' => $skill ? $skill->slug : null],
+            'meta' => $modelMeta,
         ]);
         $assistantMessage = AiMessage::create([
             'conversation_id' => $conversation->id,
             'role' => 'assistant',
             'content' => $reply,
-            'meta' => ['skill' => $skill ? $skill->slug : null],
+            'meta' => $modelMeta,
         ]);
         AiAttachment::where('conversation_id', $conversation->id)
             ->whereNull('message_id')
@@ -185,6 +215,7 @@ class AiController extends Controller
         $conversation->update([
             'title' => $this->titleForConversation($conversation, $message),
             'skill_slug' => $skill ? $skill->slug : $conversation->skill_slug,
+            'model_id' => $model->id,
             'message_count' => $conversation->messages()->count(),
             'last_message_at' => now(),
         ]);
@@ -195,6 +226,9 @@ class AiController extends Controller
             'conversation_title' => $conversation->title,
             'user_message_id' => $userMessage->id,
             'message_id' => $assistantMessage->id,
+            'model_id' => $model->id,
+            'model_name' => $model->badge(),
+            'provider_name' => $model->provider?->name,
             'attachments' => $attachmentMeta,
         ]);
     }
@@ -208,10 +242,12 @@ class AiController extends Controller
             return redirect()->route('ai.settings');
         }
         $skill = $request->input('skill');
+        $model = AiModel::usable()->where('id', (int) $request->input('model_id'))->first();
         $conversation = AiConversation::create([
             'user_id' => auth()->id(),
             'title' => '新会话',
             'skill_slug' => $skill ?: null,
+            'model_id' => $model?->id,
             'last_message_at' => now(),
         ]);
         return redirect()->route('ai.chat', ['c' => $conversation->id]);
@@ -223,14 +259,37 @@ class AiController extends Controller
     public function renameConversation(Request $request, AiConversation $conversation)
     {
         $this->assertOwner($conversation);
-        $validated = $request->validate(['title' => 'required|string|max:200']);
-        $conversation->update(['title' => $validated['title']]);
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:200',
+            'model_id' => 'nullable|integer',
+        ]);
+
+        $patch = [];
+        if (!empty($validated['title'])) {
+            $patch['title'] = $validated['title'];
+        }
+        // 切换本次会话使用的模型（用户在聊天页随时切换）
+        if (!empty($validated['model_id'])) {
+            $model = AiModel::usable()->where('id', (int) $validated['model_id'])->first();
+            if (!$model) {
+                return response()->json(['ok' => false, 'message' => '该模型不可用，请刷新后重试。'], 422);
+            }
+            $patch['model_id'] = $model->id;
+        }
+        if ($patch) {
+            $conversation->update($patch);
+        }
 
         // AJAX 直接返回 JSON：若返回重定向，浏览器会用 PATCH 方法跟随跳转导致 405
         if ($request->ajax()) {
-            return response()->json(['ok' => true, 'title' => $conversation->title]);
+            return response()->json([
+                'ok' => true,
+                'title' => $conversation->title,
+                'model_id' => $conversation->model_id,
+                'model_name' => $conversation->model?->badge(),
+            ]);
         }
-        return back()->with('success', '会话名称已更新');
+        return back()->with('success', $patch['title'] ?? false ? '会话名称已更新' : '已切换模型');
     }
 
     /**
@@ -576,9 +635,231 @@ class AiController extends Controller
         $this->authorize('ai-settings');
         $setting = AiSetting::current();
         $providers = AiSetting::providers();
+
+        // 已配置的供应商（按表里的记录），未建过的预设供应商自动补齐
+        $rows = AiProvider::orderBy('id')->get()->keyBy('key');
+        foreach ($providers as $key => $p) {
+            if (!$rows->has($key)) {
+                AiProvider::create([
+                    'key' => $key,
+                    'name' => $p['name'],
+                    'base_url' => $p['base_url'],
+                    'enabled' => false,
+                ]);
+            }
+        }
+        $rows = AiProvider::with('models')->orderBy('id')->get();
+
+        $models = AiModel::with('provider')->orderBy('provider_id')->orderBy('sort_order')->get();
+        $defaultModel = AiModel::usableDefault();
         $providerInfo = $setting->providerInfo();
         $maskedKey = $setting->maskedApiKey();
-        return view('ai.settings', compact('setting', 'providers', 'providerInfo', 'maskedKey'));
+
+        return view('ai.settings', compact(
+            'setting', 'providers', 'providerInfo', 'maskedKey', 'rows', 'models', 'defaultModel'
+        ));
+    }
+
+    // ==================== 多供应商 / 多模型管理 ====================
+
+    /**
+     * 保存某个供应商的配置（API Key / Base URL / 启停）
+     */
+    public function saveProvider(Request $request, string $provider)
+    {
+        $this->authorize('ai-settings');
+        $catalog = AiSetting::providers();
+        if (!isset($catalog[$provider])) {
+            return back()->with('error', '不支持的供应商。');
+        }
+
+        $validated = $request->validate([
+            'api_key' => 'nullable|string|max:500',
+            'base_url' => 'nullable|string|max:500',
+            'enabled' => 'boolean',
+            'is_default' => 'boolean',
+        ]);
+
+        $row = AiProvider::firstOrNew(['key' => $provider]);
+        $row->name = $catalog[$provider]['name'];
+        $row->base_url = trim((string) ($validated['base_url'] ?? '')) ?: $catalog[$provider]['base_url'];
+
+        // Key 留空表示保持原值；输入即为新值
+        if (!empty($validated['api_key'])) {
+            $row->api_key = trim($validated['api_key']);
+        }
+        $row->enabled = $request->boolean('enabled');
+        $row->save();
+
+        if ($request->boolean('is_default')) {
+            $row->markAsDefault();
+        }
+
+        // 同步 ai_settings，保证其它依赖单供应商配置的地方不被破坏
+        $row->syncToLegacySetting();
+
+        return redirect()->route('ai.settings')->with('success', $row->name . ' 配置已保存。');
+    }
+
+    /**
+     * 启用 / 停用供应商
+     */
+    public function toggleProvider(string $provider)
+    {
+        $this->authorize('ai-settings');
+        $row = AiProvider::where('key', $provider)->firstOrFail();
+        $row->update(['enabled' => !$row->enabled]);
+        $row->syncToLegacySetting();
+        $msg = $row->enabled ? '已启用' : '已停用';
+        return back()->with('success', $row->name . " {$msg}。");
+    }
+
+    /**
+     * 设为默认供应商
+     */
+    public function setDefaultProvider(string $provider)
+    {
+        $this->authorize('ai-settings');
+        $row = AiProvider::where('key', $provider)->firstOrFail();
+        $row->markAsDefault();
+        $row->syncToLegacySetting();
+        return back()->with('success', '默认供应商已设为：' . $row->name);
+    }
+
+    /**
+     * 清空某个供应商的密钥（保留供应商与模型配置）
+     */
+    public function removeProvider(string $provider)
+    {
+        $this->authorize('ai-settings');
+        $row = AiProvider::where('key', $provider)->firstOrFail();
+        $row->update(['api_key' => null, 'enabled' => false]);
+        return back()->with('success', $row->name . ' 的密钥已清除并停用。');
+    }
+
+    /**
+     * 测试某个供应商（可指定模型）能否连通
+     */
+    public function testProvider(Request $request, string $provider, AiService $ai)
+    {
+        $this->authorize('ai-settings');
+        $row = AiProvider::where('key', $provider)->firstOrFail();
+        $modelId = (int) $request->input('model_id');
+        $model = $modelId ? AiModel::where('provider_id', $row->id)->where('id', $modelId)->first() : null;
+        $result = $ai->testConnectionFor($row, $model);
+        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    /**
+     * 把预设模型列表补齐到该供应商（新增厂家新模型时可用）
+     */
+    public function syncProviderModels(string $provider)
+    {
+        $this->authorize('ai-settings');
+        $row = AiProvider::where('key', $provider)->firstOrFail();
+        $existing = $row->models()->pluck('model_id')->all();
+        $order = $row->models()->max('sort_order') ?? 0;
+        $added = 0;
+        foreach ($row->presetModels() as $modelId => $label) {
+            if (in_array($modelId, $existing, true)) {
+                continue;
+            }
+            AiModel::create([
+                'provider_id' => $row->id,
+                'model_id' => $modelId,
+                'name' => $label,
+                'enabled' => true,
+                'sort_order' => ++$order,
+            ]);
+            $added++;
+        }
+        return back()->with('success', $added ? "已补齐 {$added} 个模型。" : '预设模型已全部存在，无需补齐。');
+    }
+
+    /**
+     * 新增自定义模型（支持厂家未收录的新模型）
+     */
+    public function storeModel(Request $request)
+    {
+        $this->authorize('ai-settings');
+        $validated = $request->validate([
+            'provider_id' => 'required|integer|exists:ai_providers,id',
+            'model_id' => 'required|string|max:120',
+            'name' => 'nullable|string|max:150',
+            'is_vision' => 'boolean',
+            'enabled' => 'boolean',
+            'is_default' => 'boolean',
+        ]);
+
+        $provider = AiProvider::findOrFail($validated['provider_id']);
+        $exists = AiModel::where('provider_id', $provider->id)->where('model_id', $validated['model_id'])->first();
+        if ($exists) {
+            return back()->with('error', '该供应商下已存在同名模型标识。');
+        }
+
+        $model = AiModel::create([
+            'provider_id' => $provider->id,
+            'model_id' => trim($validated['model_id']),
+            'name' => trim($validated['name'] ?? '') ?: $validated['model_id'],
+            'is_vision' => $request->boolean('is_vision'),
+            'enabled' => $request->boolean('enabled', true),
+            'sort_order' => (int) ($provider->models()->max('sort_order') ?? 0) + 1,
+        ]);
+
+        if ($request->boolean('is_default')) {
+            $model->markAsDefault();
+        }
+        return back()->with('success', '模型已新增：' . $model->name);
+    }
+
+    /**
+     * 修改模型（名称 / 是否支持看图 / 是否开放给用户）
+     */
+    public function updateModel(Request $request, AiModel $model)
+    {
+        $this->authorize('ai-settings');
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:150',
+            'model_id' => 'nullable|string|max:120',
+            'enabled' => 'boolean',
+            'is_vision' => 'boolean',
+            'is_default' => 'boolean',
+        ]);
+
+        $data = array_filter([
+            'name' => $validated['name'] ?? null,
+            'model_id' => $validated['model_id'] ?? null,
+        ]);
+        $data['enabled'] = $request->boolean('enabled');
+        $data['is_vision'] = $request->boolean('is_vision');
+        $model->update($data);
+
+        if ($request->boolean('is_default')) {
+            $model->markAsDefault();
+        }
+        return back()->with('success', '模型已更新：' . $model->name);
+    }
+
+    /**
+     * 设为默认模型
+     */
+    public function setDefaultModel(AiModel $model)
+    {
+        $this->authorize('ai-settings');
+        $model->markAsDefault();
+        $model->provider?->syncToLegacySetting();
+        return back()->with('success', '默认模型已设为：' . $model->fullLabel());
+    }
+
+    /**
+     * 删除模型
+     */
+    public function destroyModel(AiModel $model)
+    {
+        $this->authorize('ai-settings');
+        $name = $model->name;
+        $model->delete();
+        return back()->with('success', '模型已删除：' . $name);
     }
 
     /**
@@ -639,6 +920,29 @@ class AiController extends Controller
 
         $setting->update($validated);
 
+        // 同步到多供应商表：本次提交的 provider 即当前编辑的供应商
+        $providerRow = AiProvider::where('key', $validated['provider'])->first();
+        if ($providerRow) {
+            $patch = ['base_url' => $setting->base_url];
+            if (!empty($validated['api_key'])) {
+                $patch['api_key'] = $validated['api_key'];
+            }
+            if ($providerRow->api_key || !empty($patch['api_key'])) {
+                $patch['enabled'] = $request->boolean('enabled');
+            }
+            $providerRow->update($patch);
+            if ($providerRow->enabled && !AiProvider::where('is_default', true)->exists()) {
+                $providerRow->markAsDefault();
+            }
+            // 当前模型同步标记为默认模型
+            if ($setting->model) {
+                $m = AiModel::where('provider_id', $providerRow->id)->where('model_id', $setting->model)->first();
+                if ($m) {
+                    $m->markAsDefault();
+                }
+            }
+        }
+
         // 开通引导页提交后统一落到 AI 设置页，便于继续配置限流/供应商/Key
         $fromWelcome = $request->input('source') === 'welcome';
         $message = $fromWelcome
@@ -672,7 +976,9 @@ class AiController extends Controller
         $templates = AiDocTemplate::where('enabled', true)->orderBy('category')->orderBy('id')->get();
         $generated = Session::get('ai_doc_result', null);
         Session::forget('ai_doc_result');
-        return view('ai.docs', compact('templates', 'generated'));
+        $models = AiModel::usable()->get();
+        $defaultModel = AiModel::usableDefault();
+        return view('ai.docs', compact('templates', 'generated', 'models', 'defaultModel'));
     }
 
     /**
@@ -688,12 +994,18 @@ class AiController extends Controller
         $request->validate([
             'template_id' => 'required|integer|exists:ai_doc_templates,id',
             'description' => 'required|string|max:4000',
+            'model_id' => 'nullable|integer',
         ]);
 
         $template = AiDocTemplate::findOrFail($request->template_id);
 
         if (!$ai->isAvailable()) {
             return back()->with('error', 'AI 尚未配置，请先在「AI 智能助手」中配置 API Key 并启用。');
+        }
+
+        // 本次生成使用的模型
+        if ($model = $ai->resolveModel((int) $request->input('model_id') ?: null)) {
+            $ai->useModel($model);
         }
 
         // 服务端在途锁：防止同一用户重复/并发提交，浪费共享额度

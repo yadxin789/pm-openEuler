@@ -59,6 +59,7 @@
                 <form action="{{ route('ai.conversations.store') }}" method="POST" class="mb-2">
                     @csrf
                     <input type="hidden" name="skill" id="new-conv-skill">
+                    <input type="hidden" name="model_id" id="new-conv-model">
                     <button class="btn btn-primary btn-sm w-100"><i class="fa fa-plus me-1"></i>新建会话</button>
                 </form>
                 <input type="text" id="conv-search" class="form-control form-control-sm" placeholder="搜索会话标题…">
@@ -117,13 +118,26 @@
                         @endif
                     </div>
                     <div class="small text-muted">
-                        {{ $providerInfo['name'] ?? '' }} · {{ $model }}
+                        @if($currentModel)
+                        <span id="current-model-label">当前模型：{{ $currentModel->fullLabel() }}</span>
+                        @else
+                        <span id="current-model-label">未选择模型</span>
+                        @endif
                         · 限流 {{ $rateLimit['minute'] }}/分钟、{{ $rateLimit['daily'] }}/天
                         @if(!$visionEnabled)
-                        <span class="badge bg-light text-muted ms-1" title="管理员可在 AI 设置中开启视觉模型">未开启看图能力</span>
+                        <span class="badge bg-light text-muted ms-1" title="管理员可在 AI 设置中标记支持视觉的模型">未开启看图能力</span>
                         @endif
                     </div>
                 </div>
+                <select id="model-select" class="form-select form-select-sm" style="width:auto;max-width:260px;"
+                        title="切换本次会话使用的 AI 模型，立即生效">
+                    @foreach($models as $m)
+                    <option value="{{ $m->id }}" data-name="{{ e($m->fullLabel()) }}"
+                            {{ optional($currentModel)->id === $m->id ? 'selected' : '' }}>
+                        {{ $m->provider->name ?? '' }} · {{ $m->name }}@if($m->is_vision)（看图）@endif
+                    </option>
+                    @endforeach
+                </select>
                 <select id="skill-select" class="form-select form-select-sm" style="width:auto;max-width:220px;">
                     <option value="">默认能力（全部工具）</option>
                     @foreach($skills as $s)
@@ -170,6 +184,11 @@
                             @endif
                             <div class="ai-bubble {{ $isUser ? 'user' : 'assistant' }}" data-raw="{{ e($msg->content) }}">{{ $msg->content }}</div>
                             <div class="msg-time {{ $isUser ? 'text-end' : '' }}">
+                                @if(!$isUser && ($msg->meta['model_name'] ?? null))
+                                <span class="badge bg-light text-muted border me-1" title="由 {{ $msg->meta['provider'] ?? '' }} 提供">
+                                    <i class="fa fa-microchip"></i> {{ $msg->meta['model_name'] }}
+                                </span>
+                                @endif
                                 {{ optional($msg->created_at)->format('H:i') }}
                                 @if(!$isUser)
                                 <span class="copy-btn ms-2" title="复制"><i class="fa fa-copy"></i> 复制</span>
@@ -227,6 +246,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const chipsBox = document.getElementById('attachment-chips');
     const attachCount = document.getElementById('attach-count');
     const skillSelect = document.getElementById('skill-select');
+    const modelSelect = document.getElementById('model-select');
+    const modelLabel = document.getElementById('current-model-label');
+    const newConvSkill = document.getElementById('new-conv-skill');
+    const newConvModel = document.getElementById('new-conv-model');
     const dropHint = document.getElementById('drop-hint');
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
@@ -241,6 +264,31 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function scrollToBottom() { box.scrollTop = box.scrollHeight; }
     scrollToBottom();
+
+    // ---------- 模型切换 ----------
+    function updateModelLabel() {
+        if (!modelSelect || !modelLabel) return;
+        const opt = modelSelect.options[modelSelect.selectedIndex];
+        modelLabel.textContent = '当前模型：' + (opt ? (opt.dataset.name || opt.textContent.trim()) : '未选择');
+    }
+    if (modelSelect) {
+        modelSelect.addEventListener('change', function () {
+            updateModelLabel();
+            // 已有会话：切换后同步到服务端，下次提问即生效（并刷新会话绑定的模型）
+            if (conversationId) {
+                const fd = new FormData();
+                fd.append('_method', 'PATCH');
+                fd.append('model_id', this.value);
+                fetch(@json(url('/ai/conversations')) + '/' + conversationId, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' }
+                }).catch(function () {});
+            }
+        });
+        updateModelLabel();
+    }
+    if (newConvModel && modelSelect) newConvModel.value = modelSelect.value;
 
     // ---------- 轻量 Markdown 渲染 ----------
     function escapeHtml(str) {
@@ -277,7 +325,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return el;
     }
 
-    function appendMessage(role, contentHtml) {
+    function appendMessage(role, contentHtml, modelName) {
         const isUser = role === 'user';
         const wrap = document.createElement('div');
         wrap.className = 'ai-msg ' + (isUser ? 'user' : '');
@@ -298,7 +346,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const meta = document.createElement('div');
         meta.className = 'msg-time ' + (isUser ? 'text-end' : '');
         const now = new Date();
-        meta.innerHTML = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        let timeHtml = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        if (!isUser && modelName) {
+            timeHtml = '<span class="badge bg-light text-muted border me-1"><i class="fa fa-microchip"></i> '
+                + escapeHtml(String(modelName)) + '</span>' + timeHtml;
+        }
+        meta.innerHTML = timeHtml;
         if (!isUser) {
             meta.innerHTML += ' <span class="copy-btn ms-2" title="复制"><i class="fa fa-copy"></i> 复制</span>';
             meta.querySelector('.copy-btn').addEventListener('click', function () {
@@ -546,6 +599,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fd.append('message', text);
         if (conversationId) fd.append('conversation_id', conversationId);
         if (skillSelect.value) fd.append('skill', skillSelect.value);
+        if (modelSelect && modelSelect.value) fd.append('model_id', modelSelect.value);
         images.forEach(function (f) { fd.append('images[]', f); });
         files.forEach(function (f) { fd.append('files[]', f); });
 
@@ -565,6 +619,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 thinkingEl.bubble.innerHTML = '<span class="text-danger">' + (data.reply || data.message || ('请求失败（' + res.status + '）')) + '</span>';
             } else {
                 thinkingEl.bubble.innerHTML = renderMarkdown(data.reply || '抱歉，暂无回复。');
+                // 回复气泡上标注本次实际使用的模型
+                if (thinkingEl.bubble.parentElement && data.model_name) {
+                    const metaEl = thinkingEl.bubble.parentElement.querySelector('.msg-time');
+                    if (metaEl && !metaEl.querySelector('.badge')) {
+                        metaEl.innerHTML = '<span class="badge bg-light text-muted border me-1" title="'
+                            + (data.provider_name ? escapeHtml(data.provider_name) : '') + '">'
+                            + '<i class="fa fa-microchip"></i> ' + escapeHtml(data.model_name) + '</span>' + metaEl.innerHTML;
+                    }
+                }
+                if (data.model_id && modelSelect && String(data.model_id) !== modelSelect.value) {
+                    modelSelect.value = String(data.model_id);
+                }
+                updateModelLabel();
                 if (Array.isArray(data.attachments) && data.attachments.length) {
                     addAttachmentsToBubble(userBlock.attachBox, data.attachments);
                 }
@@ -636,9 +703,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    const newConvSkill = document.getElementById('new-conv-skill');
     newConvSkill.closest('form').addEventListener('submit', function () {
         newConvSkill.value = skillSelect.value;
+        if (newConvModel && modelSelect) newConvModel.value = modelSelect.value;
     });
 
     // 绑定侧栏会话操作（重命名 / 导出 / 删除）
