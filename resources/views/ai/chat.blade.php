@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
         wrap.appendChild(bubble);
         box.appendChild(wrap);
         scrollToBottom();
+        return bubble;   // 返回气泡元素，供后续更新回复内容
     }
 
     let sending = false;
@@ -90,8 +91,8 @@ document.addEventListener('DOMContentLoaded', function () {
         sendBtn.textContent = '发送中…';
         appendMessage('user', message);
 
-        const thinking = appendMessage('assistant', '正在思考…');
-        const thinkingWrap = thinking;
+        // appendMessage 返回「正在思考…」气泡，回复返回后原地更新内容
+        const thinkingWrap = appendMessage('assistant', '正在思考…');
 
         try {
             const fd = new FormData();
