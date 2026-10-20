@@ -96,7 +96,16 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const fd = new FormData();
             fd.append('message', message);
-            const res = await fetch('{{ route("ai.ask") }}', { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content } });
+            // 超时保护：服务端 AI 调用最长约 120s，这里 150s 内未返回视为网络中断，
+            // 避免页面一直停留在「正在思考…」
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 150000);
+            let res;
+            try {
+                res = await fetch('{{ route("ai.ask") }}', { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, signal: controller.signal });
+            } finally {
+                clearTimeout(timer);
+            }
             if (!res.ok) {
                 let msg = '请求失败（' + res.status + '）。';
                 try { const j = await res.json(); msg = j.message || msg; } catch (e) {}
@@ -106,7 +115,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 thinkingWrap.textContent = data.reply || '抱歉，暂无回复。';
             }
         } catch (e) {
-            thinkingWrap.textContent = '网络错误，请重试。';
+            thinkingWrap.textContent = (e && e.name === 'AbortError')
+                ? '请求超时或网络中断，请检查网络后重试。'
+                : '网络错误，请重试。';
         } finally {
             sending = false;
             sendBtn.disabled = false;
