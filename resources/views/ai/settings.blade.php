@@ -127,53 +127,55 @@
                                         @endif
                                     </td>
                                     <td>
-                                        <form method="POST" action="{{ route('ai.providers.save', $row->key) }}" class="row g-1 align-items-center">
+                                        {{-- Key / Base URL：Key 留空表示保持原值 --}}
+                                        <form method="POST" action="{{ route('ai.providers.save', $row->key) }}" class="mb-2">
                                             @csrf
-                                            <div class="col-12">
-                                                <div class="input-group input-group-sm">
-                                                    <input type="password" name="api_key" class="form-control font-monospace"
-                                                           placeholder="{{ $row->maskedApiKey() ? '留空保持不变' : '粘贴 API Key' }}" autocomplete="new-password">
-                                                    <button class="btn btn-outline-primary" title="保存 Key">保存 Key</button>
-                                                </div>
+                                            <input type="hidden" name="enabled" value="{{ $row->enabled ? 1 : 0 }}">
+                                            <div class="input-group input-group-sm mb-1">
+                                                <input type="password" name="api_key" class="form-control font-monospace"
+                                                       placeholder="{{ $row->maskedApiKey() ? '留空保持不变' : '粘贴 API Key' }}" autocomplete="new-password">
+                                                <button class="btn btn-outline-primary" title="保存 Key">保存 Key</button>
                                             </div>
-                                            <div class="col-12">
-                                                <div class="input-group input-group-sm">
-                                                    <input type="text" name="base_url" class="form-control font-monospace"
-                                                           value="{{ $row->base_url }}" placeholder="接口地址 Base URL">
-                                                    <button class="btn btn-outline-primary" title="保存地址">保存地址</button>
-                                                </div>
-                                            </div>
-                                            <div class="col-12 d-flex gap-1 flex-wrap">
-                                                <input type="hidden" name="enabled" value="0">
-                                                <div class="form-check form-check-inline mb-0">
-                                                    <input class="form-check-input" type="checkbox" name="enabled" id="en-{{ $row->id }}" value="1"
-                                                           onchange="this.form.submit()" {{ $row->enabled ? 'checked' : '' }}>
-                                                    <label class="form-check-label small" for="en-{{ $row->id }}">启用</label>
-                                                </div>
-                                                @if(!$row->is_default)
-                                                <form method="POST" action="{{ route('ai.providers.default', $row->key) }}" class="d-inline">
-                                                    @csrf
-                                                    <button class="btn btn-sm btn-outline-secondary">设默认</button>
-                                                </form>
-                                                @endif
-                                                <form method="POST" action="{{ route('ai.providers.test', $row->key) }}" class="d-inline">
-                                                    @csrf
-                                                    <button class="btn btn-sm btn-outline-info">测试连接</button>
-                                                </form>
-                                                <form method="POST" action="{{ route('ai.providers.sync', $row->key) }}" class="d-inline">
-                                                    @csrf
-                                                    <button class="btn btn-sm btn-outline-secondary">补模型</button>
-                                                </form>
-                                                @if($row->hasRealApiKey())
-                                                <form method="POST" action="{{ route('ai.providers.remove', $row->key) }}" class="d-inline"
-                                                      onsubmit="return confirm('清除 {{ $row->name }} 的密钥并停用？');">
-                                                    @csrf @method('DELETE')
-                                                    <button class="btn btn-sm btn-outline-danger">清 Key</button>
-                                                </form>
-                                                @endif
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" name="base_url" class="form-control font-monospace"
+                                                       value="{{ $row->base_url }}" placeholder="接口地址 Base URL">
+                                                <button class="btn btn-outline-primary" title="保存地址">保存地址</button>
                                             </div>
                                         </form>
 
+                                        <div class="d-flex gap-1 flex-wrap align-items-center">
+                                            {{-- 启用开关独立成表单一套，避免嵌套 form --}}
+                                            <form method="POST" action="{{ route('ai.providers.toggle', $row->key) }}" class="mb-0">
+                                                @csrf
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" id="en-{{ $row->id }}"
+                                                           onchange="this.form.submit()" {{ $row->enabled ? 'checked' : '' }}>
+                                                    <label class="form-check-label small" for="en-{{ $row->id }}">启用</label>
+                                                </div>
+                                            </form>
+
+                                            @if(!$row->is_default)
+                                            <form method="POST" action="{{ route('ai.providers.default', $row->key) }}" class="mb-0">
+                                                @csrf
+                                                <button class="btn btn-sm btn-outline-secondary">设默认</button>
+                                            </form>
+                                            @endif
+                                            <form method="POST" action="{{ route('ai.providers.test', $row->key) }}" class="mb-0">
+                                                @csrf
+                                                <button class="btn btn-sm btn-outline-info">测试连接</button>
+                                            </form>
+                                            <form method="POST" action="{{ route('ai.providers.sync', $row->key) }}" class="mb-0">
+                                                @csrf
+                                                <button class="btn btn-sm btn-outline-secondary">补模型</button>
+                                            </form>
+                                            @if($row->hasRealApiKey())
+                                            <form method="POST" action="{{ route('ai.providers.remove', $row->key) }}" class="mb-0"
+                                                  onsubmit="return confirm('清除 {{ $row->name }} 的密钥并停用？');">
+                                                @csrf @method('DELETE')
+                                                <button class="btn btn-sm btn-outline-danger">清 Key</button>
+                                            </form>
+                                            @endif
+                                        </div>
                                     </td>
                                 </tr>
                                 @endforeach
