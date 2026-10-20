@@ -52,11 +52,17 @@
                 <div class="card-body">
                     @if($current['enabled'] && !empty($current['api_key']) && !str_starts_with($current['api_key'], 'sk-xxxx'))
                     <div class="alert alert-success">
-                        ✅ AI 功能已启用！当前使用：{{ $providers[$current['provider']]['name'] ?? $current['provider'] }}（{{ $current['model'] }}）
+                        ✅ AI 功能已开通并启用！当前供应商：{{ $providers[$current['provider']]['name'] ?? $current['provider'] }}（{{ $current['model'] }}）
+                        @if(!empty($maskedKey))
+                        <div class="mt-2 small">当前 API Key：
+                            <code>{{ $maskedKey }}</code>
+                            <a href="{{ route('ai.settings') }}" class="ms-2">更换 Key / 调整限流 →</a>
+                        </div>
+                        @endif
                     </div>
                     <div class="d-flex gap-2">
-                        <a href="{{ route('ai.chat') }}" class="btn btn-primary">开始使用 AI 助手 →</a>
-                        <a href="{{ route('ai.settings') }}" class="btn btn-outline-secondary">修改设置</a>
+                        <a href="{{ route('ai.settings') }}" class="btn btn-primary">进入 AI 设置 →</a>
+                        <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary">返回首页</a>
                     </div>
                     @else
                     <form method="POST" action="{{ route('ai.settings.update') }}">
@@ -76,7 +82,8 @@
                             <div class="form-text">在上方第 1 步点击对应链接即可获取</div>
                         </div>
                         <input type="hidden" name="enabled" value="1">
-                        <button class="btn btn-primary">保存并启用 AI</button>
+                        <input type="hidden" name="source" value="welcome">
+                        <button class="btn btn-primary">保存并开通 AI</button>
                     </form>
                     @endif
                 </div>

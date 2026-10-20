@@ -23,7 +23,8 @@ class AiController extends Controller
         }
         $current = AiSetting::current();
         $providers = AiSetting::providers();
-        return view('ai.welcome', compact('current', 'providers'));
+        $maskedKey = $current->maskedApiKey();
+        return view('ai.welcome', compact('current', 'providers', 'maskedKey'));
     }
 
     /**
@@ -35,17 +36,20 @@ class AiController extends Controller
     }
 
     /**
-     * AI 聊天页
-     * - 未启用：管理员跳转开通引导，非管理员跳转「尚未开通」提示。
-     * - 已启用：所有用户均可使用。
+     * AI 聊天页（仅供普通业务角色使用）
+     * - 管理员：管理员只负责管理 AI（供应商 / Key / 限流），不使用 AI → 跳转 AI 设置页
+     * - AI 未开通：跳转「管理员尚未开通」提示页
      */
     public function chat()
     {
+        if ($this->isAdmin()) {
+            return redirect()->route('ai.settings')
+                ->with('warning', '管理员账号用于管理 AI（供应商、API Key、调用限流等），不提供 AI 聊天功能。请使用普通业务账号登录使用 AI。');
+        }
+
         $setting = AiSetting::current();
         if (!$setting->isAvailable()) {
-            return $this->isAdmin()
-                ? redirect()->route('ai.welcome')
-                : redirect()->route('ai.notice');
+            return redirect()->route('ai.notice');
         }
         $history = Session::get('ai_chat_history', []);
         $providerInfo = $setting->providerInfo();
@@ -62,6 +66,18 @@ class AiController extends Controller
     public function ask(Request $request, AiService $ai)
     {
         $request->validate(['message' => 'required|string|max:2000']);
+
+        // 管理员不使用 AI，仅做管理
+        if ($this->isAdmin()) {
+            return response()->json([
+                'reply' => '🚫 管理员账号仅用于管理 AI 设置，不提供 AI 聊天功能，请使用普通业务账号使用 AI。',
+            ], 403);
+        }
+
+        $setting = AiSetting::current();
+        if (!$setting->isAvailable()) {
+            return response()->json(['reply' => '⚠️ AI 尚未开通，请联系系统管理员在「AI 设置」中配置并启用。'], 403);
+        }
 
         $history = Session::get('ai_chat_history', []);
         if (count($history) > 20) {
@@ -82,6 +98,9 @@ class AiController extends Controller
      */
     public function clear()
     {
+        if ($this->isAdmin()) {
+            return redirect()->route('ai.settings');
+        }
         Session::forget('ai_chat_history');
         return back()->with('success', '对话已清空');
     }
@@ -89,7 +108,7 @@ class AiController extends Controller
     // ==================== 设置 ====================
 
     /**
-     * AI 设置页
+     * AI 设置页（管理员专用：供应商 / API Key / 模型 / 限流 / 启停）
      */
     public function settings()
     {
@@ -97,7 +116,8 @@ class AiController extends Controller
         $setting = AiSetting::current();
         $providers = AiSetting::providers();
         $providerInfo = $setting->providerInfo();
-        return view('ai.settings', compact('setting', 'providers', 'providerInfo'));
+        $maskedKey = $setting->maskedApiKey();
+        return view('ai.settings', compact('setting', 'providers', 'providerInfo', 'maskedKey'));
     }
 
     /**
@@ -107,34 +127,64 @@ class AiController extends Controller
     {
         $this->authorize('ai-settings');
 
+        // 说明：开通引导页只提交 provider/api_key/enabled，
+        //      其余字段留空由下方按「默认值 / 原值」兜底，避免表单校验失败。
         $validated = $request->validate([
             'provider' => 'required|string|in:deepseek,qwen,doubao,hunyuan',
             'api_key' => 'nullable|string|max:500',
             'base_url' => 'nullable|string|max:500',
-            'model' => 'required|string|max:100',
+            'model' => 'nullable|string|max:100',
             'vision_enabled' => 'boolean',
             'vision_model' => 'nullable|string|max:100',
-            'temperature' => 'required|numeric|min:0|max:2',
-            'max_tokens' => 'required|integer|min:100|max:8000',
-            'rate_limit_minute' => 'required|integer|min:1|max:1000',
-            'rate_limit_daily' => 'required|integer|min:1|max:100000',
+            'temperature' => 'nullable|numeric|min:0|max:2',
+            'max_tokens' => 'nullable|integer|min:100|max:8000',
+            'rate_limit_minute' => 'nullable|integer|min:1|max:1000',
+            'rate_limit_daily' => 'nullable|integer|min:1|max:100000',
             'enabled' => 'boolean',
         ]);
 
         $setting = AiSetting::current();
+        $providers = AiSetting::providers();
+
+        // 开关类字段未勾选时也要能关闭（validate 结果不含未提交的键）
+        $validated['enabled'] = $request->boolean('enabled');
+        $validated['vision_enabled'] = $request->boolean('vision_enabled');
+
+        // 未填字段回退到原值
+        $validated['temperature'] = $validated['temperature'] ?? $setting->temperature ?? 0.7;
+        $validated['max_tokens'] = $validated['max_tokens'] ?? $setting->max_tokens ?? 2000;
+        $validated['rate_limit_minute'] = $validated['rate_limit_minute'] ?? $setting->rate_limit_minute ?? 30;
+        $validated['rate_limit_daily'] = $validated['rate_limit_daily'] ?? $setting->rate_limit_daily ?? 200;
+
+        // 模型：留空或不属于新提供商时，自动取该提供商的第一个模型
+        $providerModels = array_keys($providers[$validated['provider']]['models'] ?? []);
+        if (empty($validated['model']) || ($providerModels && !in_array($validated['model'], $providerModels, true))) {
+            $validated['model'] = $providerModels[0] ?? ($setting->model ?: 'deepseek-chat');
+        }
 
         // 未填 API Key 时保留原值
         if (empty($validated['api_key'])) {
             unset($validated['api_key']);
         }
-        if (empty($validated['base_url'])) {
-            // 未填 base_url 时回退到该提供商的默认地址
-            $validated['base_url'] = AiSetting::providers()[$validated['provider']]['base_url'] ?? null;
+
+        $oldDefaultUrl = $providers[$setting->provider]['base_url'] ?? null;
+        $newDefaultUrl = $providers[$validated['provider']]['base_url'] ?? null;
+
+        if (empty($validated['base_url'])
+            || ($oldDefaultUrl && $setting->base_url === $oldDefaultUrl)) {
+            // 留空、或仍是旧提供商默认地址时，自动改为新提供商的默认地址
+            $validated['base_url'] = $newDefaultUrl;
         }
 
         $setting->update($validated);
 
-        return back()->with('success', 'AI 设置已保存');
+        // 开通引导页提交后统一落到 AI 设置页，便于继续配置限流/供应商/Key
+        $fromWelcome = $request->input('source') === 'welcome';
+        $message = $fromWelcome
+            ? 'AI 已开通！请在本页确认供应商、API Key 与调用限流设置，建议点击「测试连接」验证可用性。'
+            : 'AI 设置已保存';
+
+        return redirect()->route('ai.settings')->with('success', $message);
     }
 
     /**
@@ -154,6 +204,10 @@ class AiController extends Controller
      */
     public function docs()
     {
+        if ($this->isAdmin()) {
+            return redirect()->route('ai.settings')
+                ->with('warning', '管理员账号仅用于管理 AI 设置，不提供 AI 文档生成功能。');
+        }
         $templates = AiDocTemplate::where('enabled', true)->orderBy('category')->orderBy('id')->get();
         $generated = Session::get('ai_doc_result', null);
         Session::forget('ai_doc_result');
@@ -165,6 +219,11 @@ class AiController extends Controller
      */
     public function generateDoc(Request $request, AiService $ai)
     {
+        if ($this->isAdmin()) {
+            return redirect()->route('ai.settings')
+                ->with('warning', '管理员账号仅用于管理 AI 设置，不提供 AI 文档生成功能。');
+        }
+
         $request->validate([
             'template_id' => 'required|integer|exists:ai_doc_templates,id',
             'description' => 'required|string|max:4000',

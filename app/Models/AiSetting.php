@@ -45,6 +45,30 @@ class AiSetting extends Model
     }
 
     /**
+     * API Key 是否已真实填写（非占位值）
+     */
+    public function hasRealApiKey(): bool
+    {
+        return !empty($this->api_key) && !str_starts_with((string) $this->api_key, 'sk-xxxx');
+    }
+
+    /**
+     * 脱敏后的 API Key（如 sk-ae0a************1f2e），未配置时返回 null
+     */
+    public function maskedApiKey(): ?string
+    {
+        if (!$this->hasRealApiKey()) {
+            return null;
+        }
+        $key = (string) $this->api_key;
+        $len = mb_strlen($key);
+        $head = mb_substr($key, 0, 6);
+        $tail = $len > 10 ? mb_substr($key, -4) : '';
+        $mask = str_repeat('*', max(8, $len - mb_strlen($head) - mb_strlen($tail)));
+        return $head . $mask . $tail;
+    }
+
+    /**
      * 支持的 AI 提供商列表（与 Laravel AI SDK 的 Lab 枚举映射）
      */
     public static function providers(): array

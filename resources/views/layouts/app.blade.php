@@ -202,12 +202,20 @@
                             </a>
                         </li>
 
-                        <!-- AI 智能助手（所有角色可用） -->
+                        <!-- AI：管理员进入「AI 设置」管理，其它角色使用「AI 智能助手」 -->
+                        @if($isAdmin)
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('ai.*') ? 'active' : '' }}" href="{{ route('ai.settings') }}">
+                                <i class="fa fa-robot me-2"></i> AI 设置
+                            </a>
+                        </li>
+                        @else
                         <li class="nav-item">
                             <a class="nav-link {{ request()->routeIs('ai.*') ? 'active' : '' }}" href="{{ route('ai.chat') }}">
                                 <i class="fa fa-robot me-2"></i> AI 智能助手
                             </a>
                         </li>
+                        @endif
                         
                         <!-- 管理员菜单 -->
                         @if($isAdmin)
@@ -704,6 +712,10 @@
                 header.classList.add('bg-success', 'text-white');
                 btn.classList.add('btn-success');
                 titleEl.innerHTML = '<i class="fa fa-check-circle mr-2"></i> ' + title;
+            } else if (type === 'warning') {
+                header.classList.add('bg-warning', 'text-dark');
+                btn.classList.add('btn-warning');
+                titleEl.innerHTML = '<i class="fa fa-info-circle mr-2"></i> ' + title;
             } else {
                 header.classList.add('bg-danger', 'text-white');
                 btn.classList.add('btn-danger');
@@ -721,6 +733,9 @@
             @endif
             @if(session('error'))
             showGlobalModal('danger', '操作失败', @json(session('error')));
+            @endif
+            @if(session('warning'))
+            showGlobalModal('warning', '提示', @json(session('warning')));
             @endif
             @php
                 $_errorStr = '';
