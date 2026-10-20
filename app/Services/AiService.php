@@ -154,19 +154,87 @@ class AiService
     }
 
     /**
-     * 带工具调用的对话（Function Calling）
+     * 工具注册表：技能/调用方可按名称挑选子集
+     *
+     * @return array<string, mixed>
      */
-    public function chatWithTools(string $userMessage, array $history = [], ?array $tools = null): string
+    public function toolMap(): array
     {
+        return [
+            'QueryPmOverview' => new QueryPmOverview,
+            'QueryProjects' => new QueryProjects,
+            'QueryProjectDetail' => new QueryProjectDetail,
+            'QueryTasks' => new QueryTasks,
+            'QueryUsers' => new QueryUsers,
+            'QueryDepartments' => new QueryDepartments,
+            'QueryKnowledge' => new QueryKnowledge,
+            'QueryFiles' => new QueryFiles,
+            'QueryTodos' => new QueryTodos,
+        ];
+    }
+
+    /**
+     * 按工具名取工具实例集合，取不到时回退到全部 PM 工具
+     */
+    public function toolsForNames(array $names, bool $fallbackToAll = true): array
+    {
+        $map = $this->toolMap();
+        $tools = [];
+        foreach ($names as $name) {
+            if (isset($map[$name])) {
+                $tools[] = $map[$name];
+            }
+        }
+        if (empty($tools) && $fallbackToAll) {
+            return $this->pmTools();
+        }
+        return $tools;
+    }
+
+    /**
+     * AI 是否具备「看图」能力（需在 AI 设置中开启视觉并指定视觉模型）
+     */
+    public function visionEnabled(): bool
+    {
+        return (bool) $this->config->vision_enabled && !empty($this->config->vision_model);
+    }
+
+    /**
+     * 带工具调用的对话（Function Calling）
+     *
+     * @param array $history      历史消息数组：[['role'=>'user','content'=>'...'], ...]
+     * @param array|null $tools   工具实例列表，null 表示使用全部 PM 工具
+     * @param array $attachments  Laravel AI SDK 附件对象（LocalImage / LocalDocument 等）
+     * @param string|null $extraInstructions 附加系统指令（如技能要求）
+     */
+    public function chatWithTools(
+        string $userMessage,
+        array $history = [],
+        ?array $tools = null,
+        array $attachments = [],
+        ?string $extraInstructions = null
+    ): string {
         if (!$this->isAvailable()) {
-            return '⚠️ AI 助手尚未配置。请前往 侧边栏 → AI 智能助手 → 开通引导，配置 API Key 并启用。';
+            return '⚠️ AI 助手尚未配置。请联系管理员在「AI 设置」中配置 API Key 并启用。';
         }
 
         try {
             $lab = $this->applyProviderConfig();
             $tools = $tools ?: $this->pmTools();
-            $agent = new AnonymousAgent($this->pmInstructions(), $this->toMessages($history), $tools);
-            $response = $agent->prompt($userMessage, provider: $lab, model: $this->config->model ?: null, timeout: 120);
+
+            $instructions = $this->pmInstructions();
+            if ($extraInstructions) {
+                $instructions .= "\n\n【本次任务的专项要求】\n" . $extraInstructions;
+            }
+
+            // 有图片附件且开启了视觉能力时，切换到视觉模型
+            $model = $this->config->model ?: null;
+            if (!empty($attachments) && $this->visionEnabled()) {
+                $model = $this->config->vision_model;
+            }
+
+            $agent = new AnonymousAgent($instructions, $this->toMessages($history), $tools);
+            $response = $agent->prompt($userMessage, $attachments, provider: $lab, model: $model, timeout: 120);
             return (string) $response;
         } catch (\Throwable $e) {
             Log::error('AI chatWithTools 异常: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);

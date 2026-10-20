@@ -54,6 +54,17 @@ Route::middleware('auth')->group(function () {
     Route::get('/ai/chat', [AiController::class, 'chat'])->name('ai.chat');
     Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask')->middleware('throttle:ai');
     Route::post('/ai/clear', [AiController::class, 'clear'])->name('ai.clear');
+
+    // AI 会话管理（多会话 / 历史记录）
+    Route::post('/ai/conversations', [AiController::class, 'storeConversation'])->name('ai.conversations.store');
+    Route::patch('/ai/conversations/{conversation}', [AiController::class, 'renameConversation'])->name('ai.conversations.rename')->whereNumber('conversation');
+    Route::delete('/ai/conversations/{conversation}', [AiController::class, 'destroyConversation'])->name('ai.conversations.destroy')->whereNumber('conversation');
+    Route::post('/ai/conversations/{conversation}/clear', [AiController::class, 'clearConversation'])->name('ai.conversations.clear')->whereNumber('conversation');
+    Route::get('/ai/conversations/{conversation}/export', [AiController::class, 'exportConversation'])->name('ai.conversations.export')->whereNumber('conversation');
+
+    // AI 附件预览 / 下载
+    Route::get('/ai/attachments/{attachment}/preview', [AiController::class, 'previewAttachment'])->name('ai.attachments.preview')->whereNumber('attachment');
+    Route::get('/ai/attachments/{attachment}/download', [AiController::class, 'downloadAttachment'])->name('ai.attachments.download')->whereNumber('attachment');
     Route::get('/ai/settings', [AiController::class, 'settings'])->name('ai.settings');
     Route::put('/ai/settings', [AiController::class, 'updateSettings'])->name('ai.settings.update');
     Route::get('/ai/settings/test', [AiController::class, 'test'])->name('ai.settings.test');

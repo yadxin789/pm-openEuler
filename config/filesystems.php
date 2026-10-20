@@ -74,6 +74,14 @@ return [
             'report' => false,
         ],
 
+        // AI 聊天附件（图片 / 文件）
+        'ai_chat' => [
+            'driver' => 'local',
+            'root' => storage_path('app/ai-chat'),
+            'throw' => false,
+            'report' => false,
+        ],
+
         // AI 文档生成资源（模板 / 范例 / 支援文件）
         'ai_docs' => [
             'driver' => 'local',

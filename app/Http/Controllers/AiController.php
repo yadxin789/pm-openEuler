@@ -2,11 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AiAttachment;
+use App\Models\AiConversation;
 use App\Models\AiDocTemplate;
+use App\Models\AiMessage;
 use App\Models\AiSetting;
+use App\Models\AiSkill;
 use App\Services\AiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Laravel\Ai\Files\LocalImage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AiController extends Controller
 {
@@ -36,11 +44,9 @@ class AiController extends Controller
     }
 
     /**
-     * AI 聊天页（仅供普通业务角色使用）
-     * - 管理员：管理员只负责管理 AI（供应商 / Key / 限流），不使用 AI → 跳转 AI 设置页
-     * - AI 未开通：跳转「管理员尚未开通」提示页
+     * AI 聊天页（多会话版：支持历史会话、图片/文件附件、技能）
      */
-    public function chat()
+    public function chat(Request $request)
     {
         if ($this->isAdmin()) {
             return redirect()->route('ai.settings')
@@ -51,22 +57,46 @@ class AiController extends Controller
         if (!$setting->isAvailable()) {
             return redirect()->route('ai.notice');
         }
-        $history = Session::get('ai_chat_history', []);
+
+        // 老版本把对话存在 Session 里，这里一次性迁移为会话记录
+        $this->migrateLegacySessionHistory();
+
+        $userId = auth()->id();
+        $conversations = AiConversation::where('user_id', $userId)
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        $conversation = null;
+        if ($request->filled('c')) {
+            $conversation = AiConversation::where('user_id', $userId)->find($request->query('c'));
+        }
+        if (!$conversation) {
+            $conversation = $conversations->first();
+        }
+
+        $messages = $conversation ? $conversation->messages()->with('attachments')->get() : collect();
+        $skills = AiSkill::where('enabled', true)->orderBy('id')->get();
+
         $providerInfo = $setting->providerInfo();
+        $model = $setting->model;
+        $visionEnabled = (bool) $setting->vision_enabled;
         $rateLimit = [
             'minute' => (int) ($setting->rate_limit_minute ?: 30),
             'daily' => (int) ($setting->rate_limit_daily ?: 200),
         ];
-        return view('ai.chat', compact('history', 'providerInfo', 'rateLimit'));
+
+        return view('ai.chat', compact(
+            'conversations', 'conversation', 'messages', 'skills', 'providerInfo', 'rateLimit', 'model', 'visionEnabled'
+        ));
     }
 
     /**
-     * 发送消息（带 PM 数据工具调用）
+     * 发送消息（支持会话、技能、图片/文件附件 + PM 数据工具调用）
      */
     public function ask(Request $request, AiService $ai)
     {
-        $request->validate(['message' => 'required|string|max:2000']);
-
         // 管理员不使用 AI，仅做管理
         if ($this->isAdmin()) {
             return response()->json([
@@ -79,30 +109,453 @@ class AiController extends Controller
             return response()->json(['reply' => '⚠️ AI 尚未开通，请联系系统管理员在「AI 设置」中配置并启用。'], 403);
         }
 
-        $history = Session::get('ai_chat_history', []);
-        if (count($history) > 20) {
-            $history = array_slice($history, -20);
+        $request->validate([
+            'message' => 'nullable|string|max:4000',
+            'conversation_id' => 'nullable|integer',
+            'skill' => 'nullable|string|max:100',
+            'images.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,bmp,webp|max:10240',
+            'files.*' => 'nullable|file|max:20480',
+        ]);
+
+        $message = trim((string) $request->input('message', ''));
+        $hasUpload = $request->hasFile('images') || $request->hasFile('files');
+        if ($message === '' && !$hasUpload) {
+            return response()->json(['reply' => '请输入问题，或上传图片 / 文件后再发送。'], 422);
         }
 
-        $reply = $ai->chatWithTools($request->message, $history);
+        // 定位 / 创建会话
+        $conversation = $this->resolveConversation($request->input('conversation_id'), $request->input('skill'));
 
-        $history[] = ['role' => 'user', 'content' => $request->message];
-        $history[] = ['role' => 'assistant', 'content' => $reply ?: '抱歉，暂无回复。'];
-        Session::put('ai_chat_history', $history);
+        // 技能 → 工具子集 + 专项指令
+        $skill = null;
+        if ($request->filled('skill')) {
+            $skill = AiSkill::where('slug', $request->input('skill'))->where('enabled', true)->first();
+        }
+        $tools = $skill ? $ai->toolsForNames($skill->config['tools'] ?? []) : null;
+        $extraInstructions = $skill ? ($skill->description ?: null) : null;
 
-        return response()->json(['reply' => $reply ?: '抱歉，暂无回复。']);
+        // 处理附件：入库 + 生成可直接投喂 AI 的内容
+        [$attachmentMeta, $aiAttachments, $fileContext, $notes] = $this->handleUploads($request, $conversation, $ai);
+
+        // 组装最终投喂文本
+        $promptParts = [];
+        if ($fileContext !== '') {
+            $promptParts[] = "【用户上传的文件已解析为文本，请基于其内容回答】\n" . $fileContext;
+        }
+        if ($message !== '') {
+            $promptParts[] = $message;
+        }
+        foreach ($notes as $note) {
+            $promptParts[] = $note;
+        }
+        $prompt = implode("\n\n", $promptParts);
+
+        // 历史上下文（最近 20 条）
+        $history = $conversation->messages()
+            ->whereIn('role', ['user', 'assistant'])
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get()
+            ->reverse()
+            ->map(fn (AiMessage $m) => ['role' => $m->role, 'content' => (string) $m->content])
+            ->values()
+            ->all();
+
+        $reply = $ai->chatWithTools($prompt, $history, $tools, $aiAttachments, $extraInstructions);
+
+        // 落库
+        $userMessage = AiMessage::create([
+            'conversation_id' => $conversation->id,
+            'role' => 'user',
+            'content' => $message !== '' ? $message : '（用户仅上传了附件，见下方附件）',
+            'meta' => ['skill' => $skill ? $skill->slug : null],
+        ]);
+        $assistantMessage = AiMessage::create([
+            'conversation_id' => $conversation->id,
+            'role' => 'assistant',
+            'content' => $reply,
+            'meta' => ['skill' => $skill ? $skill->slug : null],
+        ]);
+        AiAttachment::where('conversation_id', $conversation->id)
+            ->whereNull('message_id')
+            ->update(['message_id' => $userMessage->id]);
+
+        $conversation->update([
+            'title' => $this->titleForConversation($conversation, $message),
+            'skill_slug' => $skill ? $skill->slug : $conversation->skill_slug,
+            'message_count' => $conversation->messages()->count(),
+            'last_message_at' => now(),
+        ]);
+
+        return response()->json([
+            'reply' => $reply,
+            'conversation_id' => $conversation->id,
+            'conversation_title' => $conversation->title,
+            'user_message_id' => $userMessage->id,
+            'message_id' => $assistantMessage->id,
+            'attachments' => $attachmentMeta,
+        ]);
     }
 
     /**
-     * 清空对话
+     * 新建会话（空白）
      */
-    public function clear()
+    public function storeConversation(Request $request)
+    {
+        if ($this->isAdmin()) {
+            return redirect()->route('ai.settings');
+        }
+        $skill = $request->input('skill');
+        $conversation = AiConversation::create([
+            'user_id' => auth()->id(),
+            'title' => '新会话',
+            'skill_slug' => $skill ?: null,
+            'last_message_at' => now(),
+        ]);
+        return redirect()->route('ai.chat', ['c' => $conversation->id]);
+    }
+
+    /**
+     * 重命名会话
+     */
+    public function renameConversation(Request $request, AiConversation $conversation)
+    {
+        $this->assertOwner($conversation);
+        $validated = $request->validate(['title' => 'required|string|max:200']);
+        $conversation->update(['title' => $validated['title']]);
+        return back()->with('success', '会话名称已更新');
+    }
+
+    /**
+     * 删除会话（含附件物理文件）
+     */
+    public function destroyConversation(AiConversation $conversation)
+    {
+        $this->assertOwner($conversation);
+        $this->deleteConversationFiles($conversation);
+        $conversation->forceDelete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['ok' => true]);
+        }
+        return redirect()->route('ai.chat')->with('success', '会话已删除');
+    }
+
+    /**
+     * 清空某个会话的消息（保留会话本身）
+     */
+    public function clearConversation(AiConversation $conversation)
+    {
+        $this->assertOwner($conversation);
+        $this->deleteConversationFiles($conversation, true);
+        $conversation->messages()->delete();
+        $conversation->update(['message_count' => 0, 'last_message_at' => now()]);
+        return back()->with('success', '当前会话消息已清空');
+    }
+
+    /**
+     * 清空对话（兼容旧路由：清空 / 当前会话）
+     */
+    public function clear(Request $request)
     {
         if ($this->isAdmin()) {
             return redirect()->route('ai.settings');
         }
         Session::forget('ai_chat_history');
-        return back()->with('success', '对话已清空');
+
+        $conversation = null;
+        if ($request->filled('conversation_id')) {
+            $conversation = AiConversation::where('user_id', auth()->id())->find($request->input('conversation_id'));
+        }
+        if (!$conversation) {
+            $conversation = AiConversation::where('user_id', auth()->id())->orderByDesc('last_message_at')->first();
+        }
+        if ($conversation) {
+            return $this->clearConversation($conversation);
+        }
+        return redirect()->route('ai.chat')->with('success', '暂无可清空的会话');
+    }
+
+    /**
+     * 导出会话为 Markdown
+     */
+    public function exportConversation(AiConversation $conversation): StreamedResponse
+    {
+        $this->assertOwner($conversation);
+        $conversation->load(['messages.attachments']);
+
+        $lines = [
+            '# ' . $conversation->title,
+            '',
+            '> 导出时间：' . now()->format('Y-m-d H:i:s'),
+            '',
+        ];
+        foreach ($conversation->messages as $msg) {
+            $who = $msg->role === 'user' ? '👤 我' : '🤖 AI 助手';
+            $lines[] = '## ' . $who;
+            $lines[] = '';
+            $lines[] = (string) $msg->content;
+            if ($msg->attachments->isNotEmpty()) {
+                $lines[] = '';
+                $lines[] = '附件：' . $msg->attachments
+                    ->map(fn (AiAttachment $a) => $a->original_name)
+                    ->implode('、');
+            }
+            $lines[] = '';
+        }
+
+        $filename = 'AI会话_' . Str::of($conversation->title)->replace(['/', '\\'], '_')->limit(40, '') . '.md';
+
+        return response()->streamDownload(function () use ($lines) {
+            echo implode("\n", $lines);
+        }, $filename, ['Content-Type' => 'text/markdown; charset=UTF-8']);
+    }
+
+    /**
+     * 预览附件（图片内联展示）
+     */
+    public function previewAttachment(AiAttachment $attachment)
+    {
+        $this->assertAttachmentOwner($attachment);
+        if (!$attachment->exists()) {
+            abort(404, '文件不存在或已被清理');
+        }
+        return response()->file($attachment->absolutePath(), [
+            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . rawurlencode($attachment->original_name) . '"',
+        ]);
+    }
+
+    /**
+     * 下载附件
+     */
+    public function downloadAttachment(AiAttachment $attachment)
+    {
+        $this->assertAttachmentOwner($attachment);
+        if (!$attachment->exists()) {
+            abort(404, '文件不存在或已被清理');
+        }
+        return response()->download($attachment->absolutePath(), $attachment->original_name);
+    }
+
+    // ==================== 聊天内部辅助方法 ====================
+
+    /**
+     * 把旧版本存在 Session 里的对话迁移为会话记录（仅执行一次）
+     */
+    protected function migrateLegacySessionHistory(): void
+    {
+        $history = Session::get('ai_chat_history', []);
+        if (empty($history)) {
+            return;
+        }
+
+        $has = AiConversation::where('user_id', auth()->id())->exists();
+        if ($has) {
+            Session::forget('ai_chat_history');
+            return;
+        }
+
+        $conversation = AiConversation::create([
+            'user_id' => auth()->id(),
+            'title' => '历史会话（旧版迁移）',
+            'last_message_at' => now(),
+        ]);
+        foreach ($history as $h) {
+            AiMessage::create([
+                'conversation_id' => $conversation->id,
+                'role' => $h['role'] ?? 'user',
+                'content' => $h['content'] ?? '',
+            ]);
+        }
+        $conversation->update(['message_count' => count($history)]);
+        Session::forget('ai_chat_history');
+    }
+
+    /**
+     * 取得当前会话：有 id 就用（需属于本人），否则新建一个
+     */
+    protected function resolveConversation($conversationId = null, ?string $skill = null): AiConversation
+    {
+        if ($conversationId) {
+            $found = AiConversation::where('user_id', auth()->id())->find($conversationId);
+            if ($found) {
+                if ($skill && $found->skill_slug !== $skill) {
+                    $found->update(['skill_slug' => $skill]);
+                }
+                return $found;
+            }
+        }
+
+        return AiConversation::create([
+            'user_id' => auth()->id(),
+            'title' => '新会话',
+            'skill_slug' => $skill ?: null,
+            'last_message_at' => now(),
+        ]);
+    }
+
+    /**
+     * 处理上传的图片 / 文件
+     *
+     * @return array{0:array,1:array,2:string,3:array} [附件展示元数据, AI SDK 附件对象, 文本内容, 提示语]
+     */
+    protected function handleUploads(Request $request, AiConversation $conversation, AiService $ai): array
+    {
+        $meta = [];
+        $sdkAttachments = [];
+        $contextParts = [];
+        $notes = [];
+        $imageNames = [];
+        $unsupportedNames = [];
+
+        $userId = auth()->id();
+        $dir = 'u' . $userId . '/' . date('Ymd');
+
+        // 图片
+        foreach ($request->file('images', []) as $file) {
+            if (!$file || !$file->isValid()) {
+                continue;
+            }
+            $path = $file->storeAs($dir, Str::random(16) . '.' . $file->getClientOriginalExtension(), 'ai_chat');
+            $attachment = AiAttachment::create([
+                'conversation_id' => $conversation->id,
+                'message_id' => null,
+                'user_id' => $userId,
+                'type' => 'image',
+                'original_name' => $file->getClientOriginalName(),
+                'path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'size' => $file->getSize(),
+            ]);
+            $meta[] = [
+                'id' => $attachment->id,
+                'type' => 'image',
+                'name' => $attachment->original_name,
+                'size' => $attachment->size,
+                'readable_size' => $attachment->readableSize(),
+                'preview_url' => route('ai.attachments.preview', $attachment->id),
+            ];
+
+            if ($ai->visionEnabled()) {
+                $sdkAttachments[] = new LocalImage($attachment->absolutePath());
+            } else {
+                $imageNames[] = $attachment->original_name;
+            }
+        }
+
+        // 文件
+        foreach ($request->file('files', []) as $file) {
+            if (!$file || !$file->isValid()) {
+                continue;
+            }
+            $path = $file->storeAs($dir, Str::random(16) . '.' . $file->getClientOriginalExtension(), 'ai_chat');
+            $text = $this->extractText($file->getRealPath(), $file->getClientOriginalExtension());
+
+            $attachment = AiAttachment::create([
+                'conversation_id' => $conversation->id,
+                'message_id' => null,
+                'user_id' => $userId,
+                'type' => 'file',
+                'original_name' => $file->getClientOriginalName(),
+                'path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'size' => $file->getSize(),
+                'text_extracted' => (bool) $text,
+                'extracted_text' => $text ? mb_substr($text, 0, 20000) : null,
+            ]);
+            $meta[] = [
+                'id' => $attachment->id,
+                'type' => 'file',
+                'name' => $attachment->original_name,
+                'size' => $attachment->size,
+                'readable_size' => $attachment->readableSize(),
+                'download_url' => route('ai.attachments.download', $attachment->id),
+            ];
+
+            if ($text !== '') {
+                $contextParts[] = "=== 文件：{$attachment->original_name} ===";
+                $contextParts[] = mb_substr($text, 0, 20000);
+            } else {
+                $unsupportedNames[] = $attachment->original_name;
+            }
+        }
+
+        if ($imageNames) {
+            $notes[] = '本次还上传了图片（' . implode('、', $imageNames)
+                . '）。当前 AI 未开启视觉识别能力，无法读取图片内容，请结合文字描述回答；如需「看图」，请让管理员在 AI 设置中开启视觉模型。';
+        }
+        if ($unsupportedNames) {
+            $notes[] = '以下文件暂不支持自动解析内容（仅作记录）：' . implode('、', $unsupportedNames)
+                . '。如需分析其内容，请粘贴文本或说明要点。';
+        }
+
+        return [$meta, $sdkAttachments, implode("\n", $contextParts), $notes];
+    }
+
+    /**
+     * 抽取纯文本文件内容，非文本类型返回空串
+     */
+    protected function extractText(string $realPath, string $extension): string
+    {
+        $allowed = ['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'log', 'yaml', 'yml', 'ini', 'sql', 'html', 'htm'];
+        if (!in_array(strtolower($extension), $allowed, true)) {
+            return '';
+        }
+        if (!is_file($realPath) || filesize($realPath) > 5 * 1024 * 1024) {
+            return '';
+        }
+        $content = @file_get_contents($realPath);
+        if ($content === false || $content === '') {
+            return '';
+        }
+        $content = mb_convert_encoding($content, 'UTF-8', ['UTF-8', 'GBK', 'GB18030', 'BIG-5', 'ISO-8859-1']);
+        // 去掉二进制乱码：保留大部分可打印字符即可
+        return trim(preg_replace('/[^\P{C}\t\r\n]/u', '', $content) ?? '');
+    }
+
+    /**
+     * 会话标题：首个用户问题的前 24 个字符
+     */
+    protected function titleForConversation(AiConversation $conversation, string $message): string
+    {
+        if ($conversation->title && $conversation->title !== '新会话') {
+            return $conversation->title;
+        }
+        $first = $conversation->messages()->where('role', 'user')->value('content') ?: $message;
+        $first = trim((string) $first);
+        if ($first === '') {
+            return $conversation->title ?: '新会话';
+        }
+        return mb_strimwidth(str_replace(["\r", "\n"], ' ', $first), 0, 24, '…');
+    }
+
+    /**
+     * 清理会话附件（物理文件 + 记录）
+     *
+     * @param bool $keepConversation 是否保留会话（仅清空消息时用）
+     */
+    protected function deleteConversationFiles(AiConversation $conversation, bool $keepConversation = false): void
+    {
+        $attachments = AiAttachment::where('conversation_id', $conversation->id)->get();
+        foreach ($attachments as $attachment) {
+            Storage::disk('ai_chat')->delete($attachment->path);
+        }
+        AiAttachment::where('conversation_id', $conversation->id)->delete();
+    }
+
+    protected function assertOwner(AiConversation $conversation): void
+    {
+        if ($conversation->user_id !== auth()->id()) {
+            abort(403, '无权操作该会话。');
+        }
+    }
+
+    protected function assertAttachmentOwner(AiAttachment $attachment): void
+    {
+        if ($attachment->user_id !== auth()->id()) {
+            abort(403, '无权访问该附件。');
+        }
     }
 
     // ==================== 设置 ====================
