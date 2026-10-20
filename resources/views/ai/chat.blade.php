@@ -444,6 +444,27 @@ document.addEventListener('DOMContentLoaded', function () {
         list.insertBefore(item, list.firstChild);
     }
 
+    // 回复后同步侧栏该会话的标题与条数（避免与服务端渲染的数量不一致）
+    function syncSidebarItem(id, title) {
+        if (!id) return;
+        const list = document.getElementById('conv-list');
+        if (!list) return;
+        const item = list.querySelector('a[href$="?c=' + id + '"]');
+        if (!item) return;
+        if (title) {
+            const t = item.querySelector('.conv-title');
+            if (t) t.textContent = title;
+            item.closest('.conv-item').dataset.convTitle = String(title).toLowerCase();
+        }
+        const count = item.querySelector('.conv-meta span');
+        if (count) {
+            const n = parseInt(count.textContent, 10);
+            if (!isNaN(n)) count.textContent = (n + 2) + ' 条';
+        }
+        const time = item.querySelectorAll('.conv-meta span')[1];
+        if (time) time.textContent = '刚刚';
+    }
+
     // 会话项的操作绑定（重命名 / 导出 / 删除），动态新增的会话项同样适用
     function bindConversationActions(scope) {
         scope.querySelectorAll('[data-toggle-rename]').forEach(function (btn) {
@@ -632,6 +653,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     modelSelect.value = String(data.model_id);
                 }
                 updateModelLabel();
+                syncSidebarItem(data.conversation_id, data.conversation_title);
                 if (Array.isArray(data.attachments) && data.attachments.length) {
                     addAttachmentsToBubble(userBlock.attachBox, data.attachments);
                 }
