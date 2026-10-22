@@ -7,6 +7,7 @@
     <title>@yield('title', '产品研发管理系统')</title>
     <link rel="stylesheet" href="{{ asset('css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ asset('css/font-awesome.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/v4-shims.min.css') }}">
     <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     <style>
         body {

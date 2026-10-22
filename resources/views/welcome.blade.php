@@ -6,6 +6,7 @@
     <title>得道未来研发项目管理系统 - {{ $currentYear }}年度概览</title>
 
     <link rel="stylesheet" href="{{ asset('css/font-awesome.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/v4-shims.min.css') }}">
     <link rel="stylesheet" href="{{ asset('css/bootstrap.min.css') }}">
     <script src="{{ asset('js/echarts.min.js') }}"></script>
 
