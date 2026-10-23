@@ -151,13 +151,17 @@ class DashboardService
                 $q->where('status', '!=', \App\States\Project\Suspended::class);
             });
         $taskCount = $tasks->count();
-        $completedTasks = (clone $tasks)->where('status', \App\States\Task\Completed::class)->count();
+        $completedStates = [
+            \App\States\Task\Completed::class,
+            \App\States\Task\OverdueCompleted::class,
+        ];
+        $completedTasks = (clone $tasks)->whereIn('status', $completedStates)->count();
         $pendingTasks = (clone $tasks)->whereIn('status', [
             \App\States\Task\Pending::class,
             \App\States\Task\Rejected::class,
         ])->count();
         $overdueTasks = (clone $tasks)->where('end_date', '<', now())
-            ->where('status', '!=', \App\States\Task\Completed::class)->count();
+            ->whereNotIn('status', $completedStates)->count();
         $completionRate = $taskCount > 0 ? round(($completedTasks / $taskCount) * 100) : 0;
         $totalFiles = \App\Models\File::whereIn('task_id', $tasks->pluck('id'))->count();
 

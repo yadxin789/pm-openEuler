@@ -106,6 +106,8 @@
                         {{-- 项目暂停提示 --}}
                         @if($task->project->isInactive() && !$task->canUploadFile() && !$task->canApplyExtension())
                         <span class="text-muted small d-block mt-1">项目已暂停</span>
+                        @elseif(!$task->canUploadFile() && $task->hasPendingFile())
+                        <span class="text-muted small d-block mt-1">文件已提交，等待审核</span>
                         @endif
 
                         {{-- 已完成任务：预览 / 下载 / 更新 —— 使用统一判断 --}}

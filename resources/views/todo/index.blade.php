@@ -51,7 +51,8 @@
                             <div class="btn-group" role="group">
                                 <a href="{{ route('file.preview', $file) }}" class="btn btn-info btn-sm" target="_blank">预览</a>
                                 <a href="{{ route('file.download', $file) }}" class="btn btn-success btn-sm">下载</a>
-                                @if(!$item['project']->isInactive())
+                                {{-- 只有项目暂停才冻结审核；逾期任务只要还有待审核文件，审核按钮必须可用 --}}
+                                @if($item['task']->canAudit())
                                 <form action="{{ route('task.approve', $item['task']) }}" method="POST" style="display: inline;">
                                     @csrf
                                     <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('确定通过审核？')">通过</button>
@@ -60,8 +61,10 @@
                                     @csrf
                                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('确定驳回？')">驳回</button>
                                 </form>
-                                @else
+                                @elseif($item['project']->isInactive())
                                 <span class="text-muted small">项目已暂停</span>
+                                @else
+                                <span class="text-muted small">当前状态不可审核</span>
                                 @endif
                             </div>
                             @else

@@ -3,7 +3,8 @@
 @php
     // 待审核页名称不再额外拼接“审核”，避免标题重复。
     $pageTitle = $statusLabel === '待审核' ? '我的待审核任务列表' : '我的' . $statusLabel . '审核任务列表';
-    $showPendingFile = in_array($statusLabel, ['进行中', '待审核']);
+    // 逾期任务同样可能仍挂着待审核文件（截止日期先到、还没审完），审核按钮必须可见。
+    $showPendingFile = in_array($statusLabel, ['进行中', '待审核', '逾期']);
 @endphp
 
 @section('title', $pageTitle)

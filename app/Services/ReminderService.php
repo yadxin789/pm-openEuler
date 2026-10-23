@@ -92,8 +92,11 @@ class ReminderService
         $now = Carbon::now();
 
         $overdueTasks = Task::where('end_date', '<', $now->toDateString())
-            ->where('status', '!=', TaskCompleted::class)
-            ->where('status', '!=', TaskOverdue::class)
+            ->whereNotIn('status', [
+                TaskCompleted::class,
+                \App\States\Task\OverdueCompleted::class,
+                TaskOverdue::class,
+            ])
             ->with(['executor', 'auditor', 'project'])
             ->get();
 
@@ -102,6 +105,16 @@ class ReminderService
         foreach ($overdueTasks as $task) {
             // 所属项目已进回收站的任务不再处理
             if (!$task->project) {
+                continue;
+            }
+
+            // 项目已暂停：任务一并冻结，不得被判为逾期（恢复后按新排期重算）
+            if ($task->project->isInactive()) {
+                continue;
+            }
+
+            // 已提交文件等待审核的任务：逾期判定交给审核流程，避免审核期间被改判为逾期
+            if ($task->status->equals(ForAudit::class) && $task->hasPendingFile()) {
                 continue;
             }
 

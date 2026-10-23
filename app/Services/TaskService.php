@@ -117,16 +117,30 @@ class TaskService
      */
     private function transitionToCompletedOrOverdueCompleted(Task $task): void
     {
+        // 先判断归档归属，再落完成时间，避免状态被改动后判断失真
+        $target = $this->completedStateFor($task);
+
         $task->completed_at = now();
         $task->save();
 
-        // 判断任务是否原本已逾期
-        if ($task->status->equals(\App\States\Task\Overdue::class)) {
-            // 原来是逾期状态，转为逾期XX天完成
-            $task->status->transitionTo(\App\States\Task\OverdueCompleted::class);
-        } else {
-            $task->status->transitionTo(\App\States\Task\Completed::class);
+        if (!$task->status->equals($target)) {
+            $task->status->transitionTo($target);
         }
+    }
+
+    /**
+     * 计算任务「完成」后应落到哪个状态：
+     * 已经逾期（含状态为已逾期、is_overdue 标记、截止日期早于当天）→ 逾期XX天完成，否则 → 已完成。
+     */
+    private function completedStateFor(Task $task): string
+    {
+        $isOverdue = $task->status->equals(\App\States\Task\Overdue::class)
+            || (bool) $task->is_overdue
+            || ($task->end_date && now()->startOfDay()->gt($task->end_date->copy()->startOfDay()));
+
+        return $isOverdue
+            ? \App\States\Task\OverdueCompleted::class
+            : \App\States\Task\Completed::class;
     }
 
     /**
@@ -152,8 +166,11 @@ class TaskService
                         ->where('type', 'audit')
                         ->delete();
 
-                    // 回到已完成状态
-                    $task->status->transitionTo(\App\States\Task\Completed::class);
+                    // 回到原来的完成归属（已完成 / 逾期XX天完成），保证「更新」按钮仍然可用
+                    $restoreState = $this->completedStateFor($task);
+                    if (!$task->status->equals($restoreState)) {
+                        $task->status->transitionTo($restoreState);
+                    }
 
                     // 通知执行人：更新文件已驳回
                     $uploader = \App\Models\User::find($pendingFile->uploader_id);

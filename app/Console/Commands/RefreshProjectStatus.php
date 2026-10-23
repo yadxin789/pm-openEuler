@@ -59,32 +59,34 @@ class RefreshProjectStatus extends Command
     
     /**
      * 根据任务完成情况自动更新项目状态
+     *
+     * 注意：只处理「进行中」项目。
+     * 已完成 / 逾期完成 / 逾期 / 已暂停 项目的状态由各自业务流程（calculateProgress、暂停恢复、逾期检查）负责，
+     * 这里再强行改状态会把逾期项目错误地改回进行中或已完成。
      */
     private function updateProjectStatus(Project $project)
     {
+        if (!$project->status->equals(ProjectInProgress::class)) {
+            return;
+        }
+
         $totalTasks = $project->tasks()->count();
-        $completedTasks = $project->tasks()->where('status', TaskCompleted::class)->count();
-        
+        $completedTasks = $project->tasks()->whereIn('status', [
+            TaskCompleted::class,
+            \App\States\Task\OverdueCompleted::class,
+        ])->count();
+
         if ($totalTasks == 0) {
             return; // 没有任务，不更新状态
         }
-        
+
         $completionRate = ($completedTasks / $totalTasks) * 100;
-        
+
         // 如果所有任务都完成，将项目状态改为已完成
-        if ($completionRate == 100 && !$project->status->equals(ProjectCompleted::class)) {
+        if ($completionRate == 100) {
             try {
                 $project->status->transitionTo(ProjectCompleted::class);
                 $this->line("✓ 项目 [{$project->name}] 状态更新为: 已完成");
-            } catch (\Exception $e) {
-                $this->error("✗ 项目 [{$project->name}] 状态更新失败: " . $e->getMessage());
-            }
-        }
-        // 如果有任务但未全部完成，确保状态为进行中
-        elseif ($completionRate > 0 && !$project->status->equals(ProjectInProgress::class)) {
-            try {
-                $project->status->transitionTo(ProjectInProgress::class);
-                $this->line("✓ 项目 [{$project->name}] 状态更新为: 进行中");
             } catch (\Exception $e) {
                 $this->error("✗ 项目 [{$project->name}] 状态更新失败: " . $e->getMessage());
             }
@@ -98,9 +100,13 @@ class RefreshProjectStatus extends Command
     {
         $now = Carbon::now();
         
-        // 查找已过截止日期但未完成、未标记逾期的任务（排除已暂停项目）
+        // 查找已过截止日期但未完成、未标记逾期、未进入终态的任务（排除已暂停项目）
         $overdueTasks = Task::where('end_date', '<', $now)
-            ->whereNotIn('status', [TaskCompleted::class, \App\States\Task\Overdue::class])
+            ->whereNotIn('status', [
+                TaskCompleted::class,
+                \App\States\Task\OverdueCompleted::class,
+                \App\States\Task\Overdue::class,
+            ])
             ->whereHas('project', function($q) {
                 $q->where('status', '!=', ProjectSuspended::class);
             })
@@ -111,6 +117,11 @@ class RefreshProjectStatus extends Command
         if ($overdueCount > 0) {
             $updatedCount = 0;
             foreach ($overdueTasks as $task) {
+                // 已提交文件、等待审核的任务不在这里改判为逾期（审核流程照常进行）
+                if ($task->status->equals(\App\States\Task\ForAudit::class) && $task->hasPendingFile()) {
+                    continue;
+                }
+
                 try {
                     $oldStatus = $task->status->label();
                     $task->is_overdue = true;

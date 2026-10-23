@@ -51,6 +51,8 @@
                             @endif
                         @elseif($task->project->isInactive())
                         <span class="text-muted small">项目已暂停</span>
+                        @elseif($task->hasPendingFile())
+                        <span class="text-muted small">文件已提交，等待审核</span>
                         @endif
                     </td>
                 </tr>
@@ -161,7 +163,7 @@
                         @if($file)
                         <a href="{{ route('file.preview', $file) }}" class="btn btn-sm btn-info" target="_blank">预览</a>
                         <a href="{{ route('file.download', $file) }}" class="btn btn-sm btn-success">下载</a>
-                        @if(!$task->project->isInactive())
+                        @if($task->canUpdateFile())
                         <a href="{{ route('task.update-file', $task) }}" class="btn btn-sm btn-primary">更新</a>
                         @endif
                         @endif
@@ -222,6 +224,8 @@
                             @endif
                         @elseif($task->project->isInactive())
                         <span class="text-muted small">项目已暂停</span>
+                        @elseif($task->hasPendingFile())
+                        <span class="text-muted small">文件已提交，等待审核</span>
                         @endif
                     </td>
                 </tr>

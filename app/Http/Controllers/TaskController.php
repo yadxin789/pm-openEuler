@@ -98,8 +98,9 @@ class TaskController extends Controller
         });
         
         $completedTasks = $allTasks->filter(function($task) {
-            // 已完成：Completed 状态
-            return get_class($task->status) === \App\States\Task\Completed::class;
+            // 已完成：Completed 或 OverdueCompleted（逾期完成）
+            return get_class($task->status) === \App\States\Task\Completed::class ||
+                   get_class($task->status) === \App\States\Task\OverdueCompleted::class;
         });
         
         $overdueTasks = $allTasks->filter(function($task) {
@@ -147,8 +148,9 @@ class TaskController extends Controller
         });
         
         $completedTasks = $allTasks->filter(function($task) {
-            // 已完成：Completed 状态
-            return get_class($task->status) === \App\States\Task\Completed::class;
+            // 已完成：Completed 或 OverdueCompleted（逾期完成）
+            return get_class($task->status) === \App\States\Task\Completed::class ||
+                   get_class($task->status) === \App\States\Task\OverdueCompleted::class;
         });
         
         $overdueTasks = $allTasks->filter(function($task) {
@@ -198,10 +200,12 @@ class TaskController extends Controller
             $denyReason = '只有【任务执行人】才能上传任务文件。当前登录账号不是该任务的执行人。';
         } elseif ($task->project->isInactive()) {
             $denyReason = '当前项目已暂停（'.$task->project->status->label().'），无法上传文件。请等待项目恢复后再操作。';
-        } elseif ($task->status->equals(\App\States\Task\Completed::class) || $task->status->equals(\App\States\Task\OverdueCompleted::class)) {
-            $denyReason = '任务已完成（'.$task->status->label().'），不能再上传新文件。如需修改请联系项目创建人。';
-        } elseif ($task->status->equals(\App\States\Task\ForAudit::class) && !$task->hasPendingFile()) {
-            $denyReason = '当前任务在审核中（'.$task->status->label().'），暂未检测到可覆盖的待审核文件，请等审核人处理后再试。';
+        } elseif ($task->hasPendingFile()) {
+            $denyReason = '当前任务已提交文件、正在审核中（'.$task->status->label().'）。如需变更文件，请等审核人驳回后再上传。';
+        } elseif (($task->status->equals(\App\States\Task\Completed::class)
+                || $task->status->equals(\App\States\Task\OverdueCompleted::class))
+            && $task->files()->where('status', 'approved')->exists()) {
+            $denyReason = '任务已完成（'.$task->status->label().'）且已有已通过的文件，请在文件列表中使用「更新」提交新版本。';
         } elseif (!$task->canUploadFile($userId)) {
             $denyReason = '当前任务状态（'.$task->status->label().'）不允许上传文件。';
         }
@@ -480,11 +484,14 @@ class TaskController extends Controller
     }
 
     /**
-     * 我的已完成任务列表（分页+过滤）
+     * 我的已完成任务列表（分页+过滤，含逾期完成）
      */
     public function myCompletedTasks(Request $request)
     {
-        return $this->myTasksByStatus($request, 'executor', [\App\States\Task\Completed::class], '已完成');
+        return $this->myTasksByStatus($request, 'executor', [
+            \App\States\Task\Completed::class,
+            \App\States\Task\OverdueCompleted::class,
+        ], '已完成');
     }
 
     /**
@@ -553,11 +560,14 @@ class TaskController extends Controller
     }
 
     /**
-     * 我的已完成审核任务列表（分页+过滤）
+     * 我的已完成审核任务列表（分页+过滤，含逾期完成）
      */
     public function myCompletedAuditTasks(Request $request)
     {
-        return $this->myTasksByStatus($request, 'auditor', [\App\States\Task\Completed::class], '已完成');
+        return $this->myTasksByStatus($request, 'auditor', [
+            \App\States\Task\Completed::class,
+            \App\States\Task\OverdueCompleted::class,
+        ], '已完成');
     }
 
     /**

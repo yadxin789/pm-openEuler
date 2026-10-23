@@ -57,11 +57,15 @@ class DashboardController extends Controller
         $projectStatusData = $this->getGlobalProjectStatusData();
 
         $totalTasks = Task::whereHas('project', fn($q) => $q->where('status', '!=', \App\States\Project\Suspended::class))->count();
-        $completedTasks = Task::where('status', \App\States\Task\Completed::class)
+        $completedTaskStates = [
+            \App\States\Task\Completed::class,
+            \App\States\Task\OverdueCompleted::class,
+        ];
+        $completedTasks = Task::whereIn('status', $completedTaskStates)
             ->whereHas('project', fn($q) => $q->where('status', '!=', \App\States\Project\Suspended::class))
             ->count();
         $overdueTasks = Task::where('end_date', '<', now())
-            ->where('status', '!=', \App\States\Task\Completed::class)
+            ->whereNotIn('status', $completedTaskStates)
             ->whereHas('project', fn($q) => $q->where('status', '!=', \App\States\Project\Suspended::class))
             ->count();
 

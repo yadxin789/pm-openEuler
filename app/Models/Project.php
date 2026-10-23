@@ -78,6 +78,11 @@ class Project extends Model
         $this->progress = $total > 0 ? ($completed / $total) * 100 : 0;
         $this->save();
 
+        // 项目已暂停：冻结状态下不做任何自动状态流转，恢复后按新排期重新计算
+        if ($this->status->equals(\App\States\Project\Suspended::class)) {
+            return $this->progress;
+        }
+
         // 如果所有任务都已完成，自动将项目状态转为已完成或逾期XX天完成
         if ($total > 0 && $completed == $total) {
             $overdueState = \App\States\Project\Overdue::class;

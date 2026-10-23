@@ -41,6 +41,30 @@
     </div>
 </div>
 
+{{-- 任务操作入口：只有「项目已暂停」才冻结，其余状态（含逾期、逾期完成）都必须能上传/变更/审核 --}}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fa fa-cogs me-2"></i>任务操作</h5>
+    </div>
+    <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+        @if($task->canUploadFile())
+        <a href="{{ route('task.upload', $task) }}" class="btn btn-primary">上传文件</a>
+        @endif
+        @if($task->canApplyExtension())
+        <a href="{{ route('task.apply-extension', $task) }}" class="btn btn-warning">申请延期</a>
+        @endif
+        @if($task->canAudit())
+        <a href="{{ route('task.audit', $task) }}" class="btn btn-success">审核文件</a>
+        @endif
+        @if($task->canUpdateFile())
+        <a href="{{ route('task.update-file', $task) }}" class="btn btn-warning">更新文件</a>
+        @endif
+        @if($task->project && $task->project->isInactive())
+        <span class="text-muted small">项目已暂停，任务文件的上传/变更/审核已冻结，项目恢复后自动恢复。</span>
+        @endif
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header">
         <h4>文件列表</h4>

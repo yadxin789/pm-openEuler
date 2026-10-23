@@ -99,13 +99,13 @@
                         @if($file)
                         <a href="{{ route('file.preview', $file) }}" class="btn btn-sm btn-info" target="_blank">预览</a>
                         <a href="{{ route('file.download', $file) }}" class="btn btn-sm btn-success">下载</a>
-                        @if(!$task->project->isInactive())
+                        @if($task->canAudit())
                         <form action="{{ route('task.approve', $task) }}" method="POST" class="d-inline">
                             @csrf
                             <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('确定通过审核吗？')">通过</button>
                         </form>
                         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ $task->id }}">驳回</button>
-                        @else
+                        @elseif($task->project->isInactive())
                         <span class="text-muted small">项目已暂停</span>
                         @endif
                         
@@ -216,10 +216,15 @@
                     <th>任务状态</th>
                     <th>任务起始日期</th>
                     <th>任务截止日期</th>
+                    <th>待审核文件</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach($overdueTasks as $task)
+                @php
+                    $pendingFile = $task->pendingFile();
+                @endphp
                 <tr>
                     <td><a href="{{ route('project.show', $task->project) }}">{{ $task->project->name }}</a></td>
                     <td>
@@ -235,6 +240,49 @@
                     </td>
                     <td>{{ $task->start_date->format('Y-m-d') }}</td>
                     <td>{{ $task->end_date->format('Y-m-d') }}</td>
+                    <td>{{ $pendingFile ? $pendingFile->original_name : '-' }}</td>
+                    <td>
+                        <a href="{{ route('task.show', $task) }}" class="btn btn-sm btn-info">查看</a>
+                        @if($pendingFile)
+                        <a href="{{ route('file.preview', $pendingFile) }}" class="btn btn-sm btn-info" target="_blank">预览</a>
+                        <a href="{{ route('file.download', $pendingFile) }}" class="btn btn-sm btn-success">下载</a>
+                        @endif
+                        {{-- 逾期任务只要仍有待审核文件，审核按钮就必须可见（仅项目暂停才冻结） --}}
+                        @if($task->canAudit())
+                        <form action="{{ route('task.approve', $task) }}" method="POST" class="d-inline">
+                            @csrf
+                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('确定通过审核吗？')">通过</button>
+                        </form>
+                        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ $task->id }}">驳回</button>
+
+                        <!-- 驳回模态框 -->
+                        <div class="modal fade" id="rejectModal{{ $task->id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">驳回任务</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form action="{{ route('task.reject', $task) }}" method="POST">
+                                        @csrf
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label for="reason{{ $task->id }}" class="form-label">驳回原因</label>
+                                                <textarea class="form-control" id="reason{{ $task->id }}" name="reason" rows="3" required></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                            <button type="submit" class="btn btn-danger">确认驳回</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        @elseif($task->project->isInactive())
+                        <span class="text-muted small">项目已暂停</span>
+                        @endif
+                    </td>
                 </tr>
                 @endforeach
             </tbody>

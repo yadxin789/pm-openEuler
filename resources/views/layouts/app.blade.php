@@ -125,7 +125,10 @@
                 ->whereHas('project', fn($q) => $q->where('status', '!=', \App\States\Project\Suspended::class))
                 ->count();
             $myCompletedTaskCount = \App\Models\Task::where('executor_id', $currentUser->id)
-                ->where('status', \App\States\Task\Completed::class)
+                ->whereIn('status', [
+                    \App\States\Task\Completed::class,
+                    \App\States\Task\OverdueCompleted::class,
+                ])
                 ->whereHas('project', fn($q) => $q->where('status', '!=', \App\States\Project\Suspended::class))
                 ->count();
             $mySuspendedTaskCount = \App\Models\Task::where('executor_id', $currentUser->id)
@@ -162,7 +165,10 @@
                 ]))
                 ->count();
             $myCompletedAuditCount = \App\Models\Task::where('auditor_id', $currentUser->id)
-                ->where('status', \App\States\Task\Completed::class)
+                ->whereIn('status', [
+                    \App\States\Task\Completed::class,
+                    \App\States\Task\OverdueCompleted::class,
+                ])
                 ->whereHas('project', fn($q) => $q->whereNotIn('status', [
                     \App\States\Project\Suspended::class,
                 ]))
