@@ -225,10 +225,15 @@
                         @endif
 
                         <!-- AI 授权中心：所有登录用户可用（签发委托令牌 / 审批 AI 变更） -->
+                        @php
+                            $pendingAiProposals = auth()->check()
+                                ? \App\Models\AiChangeProposal::where('user_id', auth()->id())
+                                    ->where('status', 'pending')->where('expires_at', '>', now())->count()
+                                : 0;
+                        @endphp
                         <li class="nav-item">
                             <a class="nav-link {{ request()->routeIs('ai-delegation.*') ? 'active' : '' }}" href="{{ route('ai-delegation.index') }}">
                                 <i class="fa fa-key me-2"></i> AI 授权中心
-                                @php($pendingAiProposals = \App\Models\AiChangeProposal::where('user_id', auth()->id())->where('status', 'pending')->where('expires_at', '>', now())->count())
                                 @if($pendingAiProposals > 0)
                                 <span class="badge bg-warning text-dark ms-1">{{ $pendingAiProposals }}</span>
                                 @endif
