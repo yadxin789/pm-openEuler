@@ -78,12 +78,46 @@
 
 ## 四、AI 数据 API
 
-供 AI / 外部 Agent 全面调取 PM 系统数据，返回干净 JSON。
+供 AI / 外部 Agent 读取与变更 PM 系统数据，返回干净 JSON。
+
+### 4.1 授权模型
+
+> **核心原则：谁对这份文件拥有读 / 写 / 下载的权限，谁就可以授权 AI 读 / 写 / 下载。**
+> **编辑保护：AI 编辑文件前需用户同意，编辑结果需用户确认。**
+
+| 凭据 | 请求头 | 作用 |
+|---|---|---|
+| 系统密钥 | `X-AI-Key` / `?api_key=` | 证明调用方是已登记的 AI 客户端（`.env` 的 `AI_API_KEY`） |
+| 委托令牌 | `X-AI-Token` / `?ai_token=` | 证明「某个用户授权了 AI」，并以其身份执行 |
+
+委托令牌由用户在 **「AI 授权中心」（`/ai-delegation`）** 签发，或管理员用命令行签发：
+
+```bash
+php artisan ai:issue-token {user_id|username} --name="文档生成 Agent" --scopes=read,write,download --days=90
+```
+
+令牌**不产生任何额外权限**：AI 拿到令牌后能做的事，完全等同于签发者本人。
+文件下载与一切写操作**必须**携带委托令牌，否则 401。
+
+可选作用域：`read`（读取）、`write`（编辑，仍需逐条确认）、`download`（下载文件正文）。
+
+### 4.2 两阶段写入（AI 永不直接改数据）
 
 ```
-认证：请求头 X-AI-Key  或  查询参数 api_key
-密钥：.env 中的 AI_API_KEY
+AI 调用写接口
+   └─> 校验授权人权限 → 生成待确认提案（status=pending）→ 返回 202 + proposal_id + diff
+           ✗ 权限不足：直接 403，提案都不会生成
+           ✗ 业务数据此时完全未被触碰
+
+授权人在「AI 授权中心」审阅 diff
+   ├─> 确认 → 真正执行写入（以审批人身份记录操作日志）
+   └─> 驳回 → 丢弃，暂存文件一并清理
 ```
+
+提案 30 分钟未处理自动作废（定时任务 `ai:expire-proposals`）。
+AI 可用 `GET /api/ai/write/proposals/{id}` 跟踪状态。
+
+### 4.3 只读端点
 
 | 端点 | 说明 |
 |---|---|
@@ -92,17 +126,87 @@
 | `GET /api/ai/projects` | 项目列表（`status`,`keyword`,`limit`） |
 | `GET /api/ai/projects/{id}` | 项目详情（含任务） |
 | `GET /api/ai/tasks` | 任务列表（`status`,`keyword`,`executor`,`limit`） |
+| `GET /api/ai/tasks/{id}` | 任务详情（含文件与 AI 可执行动作） |
 | `GET /api/ai/users` | 用户列表（`keyword`,`limit`） |
 | `GET /api/ai/departments` | 部门列表 |
-| `GET /api/ai/knowledge` | 知识库（`keyword`,`limit`） |
-| `GET /api/ai/files` | 文件列表（`status`,`keyword`,`limit`） |
-| `GET /api/ai/todos` | 待办事项（`completed`,`limit`） |
+| `GET /api/ai/knowledge-categories` | 知识库分类树 |
+| `GET /api/ai/knowledge` | 知识库列表（`keyword`,`category`,`limit`） |
+| `GET /api/ai/knowledge/{id}` | 知识库详情（**完整文档树**：文档/章节/链接） |
+| `GET /api/ai/files` | 任务文件列表（`task_id`,`project_id`,`status`,`keyword`,`limit`） |
+| `GET /api/ai/files/{id}` | 文件详情 |
+| `GET /api/ai/files/{id}/versions` | 文件历史版本 |
+| `GET /api/ai/files/{id}/content` | 文件正文（纯文本类，需 `download` 权限） |
+| `GET /api/ai/files/{id}/download` | 下载文件（需委托令牌 + `download`） |
+| `GET /api/ai/department-files` | 支援文件（部门资料，按可见性收敛） |
+| `GET /api/ai/department-files/{id}/download` | 下载支援文件 |
 | `GET /api/ai/templates` | AI 文档模板列表 |
+| `GET /api/ai/templates/{id}` | **模板全文 + 范例 + 支援文件内容 + 生成指引** |
+| `GET /api/ai/todos` | 待办事项（`completed`,`limit`） |
 
-### 内部工具（Laravel AI SDK Tool）
+### 4.4 写入端点（全部返回 202 提案）
 
-`app/Ai/Tools/` 下共 11 个工具，供聊天/文档生成 Agent 调用：
-`QueryPmOverview`、`QueryProjects`、`QueryProjectDetail`、`QueryTasks`、`QueryUsers`、`QueryDepartments`、`QueryKnowledge`、`QueryFiles`、`QueryTodos`、`GetDocTemplate`、`SearchKnowledgeBase`。
+| 端点 | 说明 |
+|---|---|
+| `POST /api/ai/write/tasks` | 新建任务 |
+| `PUT /api/ai/write/tasks/{id}` | 修改任务 |
+| `POST /api/ai/write/tasks/{id}/extension` | 申请延期 |
+| `POST /api/ai/write/tasks/{id}/upload` | 上传任务文件（multipart） |
+| `POST /api/ai/write/tasks/{id}/update-file` | 更新任务文件新版本（multipart） |
+| `POST /api/ai/write/tasks/{id}/audit` | 审核（`result=approve\|reject`） |
+| `POST /api/ai/write/department-files` | 新建支援文件（multipart） |
+| `POST /api/ai/write/department-files/{id}` | 更新支援文件（multipart） |
+| `DELETE /api/ai/write/department-files/{id}` | 删除支援文件 |
+| `POST /api/ai/write/knowledge` | 新建知识库 |
+| `PUT /api/ai/write/knowledge/{id}` | 修改知识库 |
+| `DELETE /api/ai/write/knowledge/{id}` | 删除知识库 |
+| `POST /api/ai/write/knowledge/{id}/docs` | 新建知识库文档 |
+| `PUT /api/ai/write/knowledge-docs/{docId}` | 修改知识库文档 |
+| `DELETE /api/ai/write/knowledge-docs/{docId}` | 删除知识库文档 |
+| `GET /api/ai/write/proposals` | 提案列表 |
+| `GET /api/ai/write/proposals/{id}` | 提案详情 + diff |
+
+调用示例：
+
+```bash
+# 1) AI 提交编辑意图
+curl -X POST http://host/api/ai/write/knowledge \
+  -H "X-AI-Key: $AI_API_KEY" -H "X-AI-Token: $DELEGATION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"新产品立项说明","desc":"AI 起草","is_share":true,"reason":"按周报模板整理"}'
+# => 202 {"proposal_id":12,"diff":{...},"confirm_url":"http://host/ai-delegation"}
+
+# 2) 用户在「AI 授权中心」确认后，变更才生效
+curl http://host/api/ai/write/proposals/12 \
+  -H "X-AI-Key: $AI_API_KEY" -H "X-AI-Token: $DELEGATION_TOKEN"
+```
+
+### 内置 AI 助手的工具（Laravel AI SDK Tool）
+
+`app/Ai/Tools/` 下共 17 个工具，供聊天 / 文档生成 Agent 调用。
+
+**查询类（11）**：`QueryPmOverview`、`QueryProjects`、`QueryProjectDetail`、`QueryTasks`、`QueryUsers`、`QueryDepartments`、`QueryKnowledge`、`QueryFiles`、`QueryTodos`、`GetDocTemplate`、`SearchKnowledgeBase`。
+
+**变更类（6，只生成提案，不直接写库）**：
+
+| 工具 | 用途 |
+|---|---|
+| `ProposeTaskChange` | 新建 / 修改任务、申请延期 |
+| `ProposeTaskAudit` | 任务文件审核通过 / 驳回 |
+| `ProposeKnowledgeChange` | 知识库增 / 改 / 删 |
+| `ProposeKnowledgeDocChange` | 知识库文档（含章节、链接）增 / 改 / 删，可提交 Markdown 正文 |
+| `ProposeDepartmentFileChange` | 支援文件改分类 / 可见范围、删除 |
+| `ListMyProposals` | 查询我名下的提案状态（只读） |
+
+内置 AI 与外部 API 共用同一套两阶段引擎，区别只是授权人身份来源不同
+（内置 AI 取 `auth()->user()`，外部 API 取委托令牌绑定的用户）。
+
+> **刻意不提供「确认提案」工具**：审批权必须留在人手里，AI 无法自我确认，
+> 物理上杜绝「AI 自己提交又自己批准」的绕过路径。
+
+系统提示词已写入硬性规则：只有用户本轮明确提出变更意图时才可调用 `Propose*`，
+信息不全时先询问，提案返回后必须告知用户「尚未生效，需本人到 AI 授权中心确认」。
+
+另注册 Skill **「数据变更助理」（`data-change`）**，只挂载变更类工具，便于按需隔离权限。
 
 ---
 
@@ -114,6 +218,8 @@
 | `ai_doc_templates` | 文档生成模板目录 |
 | `ai_skills` | PM 专业服务 Skill 注册表 |
 | `agent_conversations` / `agent_conversation_messages` | Laravel AI SDK 会话表 |
+| `ai_delegation_tokens` | 用户签发给 AI 的委托令牌（权限边界 = 用户本人） |
+| `ai_change_proposals` | AI 变更提案（pending → confirmed / rejected / expired / failed） |
 
 ---
 
@@ -183,11 +289,17 @@ app/
 │  └─ Tools/*.php                     # 11 个 AI 工具
 ├─ Http/
 │  ├─ Controllers/AiController.php    # 开通引导/聊天/设置/文档生成
-│  ├─ Controllers/Api/AiApiController.php  # AI 数据 API
-│  └─ Middleware/AiApiAuth.php        # X-AI-Key 认证
+│  ├─ Controllers/Api/AiApiController.php       # AI 只读数据 API
+│  ├─ Controllers/Api/AiWriteApiController.php  # AI 写入 API（两阶段提案）
+│  ├─ Controllers/AiDelegationController.php    # AI 授权中心（令牌 / 审批）
+│  └─ Middleware/AiApiAuth.php        # X-AI-Key 认证 + X-AI-Token 委托身份解析
 ├─ Models/AiSetting.php / AiDocTemplate.php / AiSkill.php
+├─ Models/AiDelegationToken.php / AiChangeProposal.php   # 委托授权与变更提案
+├─ Services/AiDelegationService.php   # 委托鉴权（单一可信权限源）
+├─ Services/AiChangeProposalService.php # 提案预览 / 确认执行 / 驳回
 └─ Services/AiService.php             # 桥接 DB 配置 ↔ Laravel AI SDK
 resources/views/ai/                   # welcome / chat / settings / docs
+resources/views/ai-delegation/        # AI 授权中心
 routes/api.php                         # /api/ai/*
 config/ai.php                          # laravel/ai 提供商配置
 storage/app/ai_docs/templates/         # 文档模板 / 范例文件

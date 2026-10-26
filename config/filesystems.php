@@ -90,6 +90,14 @@ return [
             'report' => false,
         ],
 
+        // AI 变更提案的上传暂存区：确认后转正式库，驳回/过期即清理
+        'ai_staging' => [
+            'driver' => 'local',
+            'root' => storage_path('app/ai-staging'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

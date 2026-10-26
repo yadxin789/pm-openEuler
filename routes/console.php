@@ -60,3 +60,10 @@ Schedule::call([ReminderService::class, 'checkAuditOverdue'])
 Schedule::call([ReminderService::class, 'checkOverdueProjects'])
     ->name('reminder:overdue-projects')
     ->dailyAt('01:00');
+
+// AI 变更提案过期作废：每 10 分钟清理超时未确认的提案及其暂存文件，
+// 避免 AI 提交的编辑意图无限期悬挂在用户待办里
+Schedule::call([\App\Services\AiChangeProposalService::class, 'expireStale'])
+    ->name('ai:expire-proposals')
+    ->everyTenMinutes()
+    ->withoutOverlapping();

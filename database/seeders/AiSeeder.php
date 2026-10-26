@@ -90,6 +90,7 @@ class AiSeeder extends Seeder
             ['name' => '知识库检索', 'slug' => 'knowledge-retrieval', 'type' => 'tool', 'description' => '检索知识库制度、流程、规范文档。', 'config' => ['tools' => ['QueryKnowledge', 'SearchKnowledgeBase']]],
             ['name' => '文档生成', 'slug' => 'doc-generator', 'type' => 'doc-generator', 'description' => '用自然语言描述数据/参数，依据模板、范例、知识库自动生成项目立项报告、周报、会议纪要、需求规格、验收报告等文档。', 'config' => ['tools' => ['GetDocTemplate', 'SearchKnowledgeBase', 'QueryProjects', 'QueryTasks']]],
             ['name' => '文件检索', 'slug' => 'file-retrieval', 'type' => 'tool', 'description' => '查询任务交付文件、资源文件及其审核状态。', 'config' => ['tools' => ['QueryFiles']]],
+            ['name' => '数据变更助理', 'slug' => 'data-change', 'type' => 'agent', 'description' => '按用户指令提交任务 / 审核 / 知识库 / 支援文件的变更提案。AI 只负责起草提案，数据需你在「AI 授权中心」确认后才会真正变更。', 'config' => ['tools' => ['ProposeTaskChange', 'ProposeTaskAudit', 'ProposeKnowledgeChange', 'ProposeKnowledgeDocChange', 'ProposeDepartmentFileChange', 'ListMyProposals', 'QueryProjects', 'QueryProjectDetail', 'QueryTasks', 'QueryKnowledge', 'QueryFiles']]],
         ];
 
         foreach ($skills as $s) {

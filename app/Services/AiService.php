@@ -3,6 +3,12 @@
 namespace App\Services;
 
 use App\Ai\Tools\GetDocTemplate;
+use App\Ai\Tools\ListMyProposals;
+use App\Ai\Tools\ProposeDepartmentFileChange;
+use App\Ai\Tools\ProposeKnowledgeChange;
+use App\Ai\Tools\ProposeKnowledgeDocChange;
+use App\Ai\Tools\ProposeTaskAudit;
+use App\Ai\Tools\ProposeTaskChange;
 use App\Ai\Tools\QueryDepartments;
 use App\Ai\Tools\QueryFiles;
 use App\Ai\Tools\QueryKnowledge;
@@ -177,7 +183,16 @@ class AiService
     {
         return "你是 PM 产品研发管理系统的智能助手。你可以调用工具查询项目、任务、用户、部门、知识库、文件、待办等真实数据。"
             . "回答用户问题时请用简洁的中文。如果问题需要数据，先调用对应工具，再基于工具返回的结果作答，不要编造数据。"
-            . "所有数字、项目名、任务名必须来自工具返回结果。";
+            . "所有数字、项目名、任务名必须来自工具返回结果。\n\n"
+            . "【变更类操作的硬性规则】\n"
+            . "1) 你有权调用 Propose* 系列工具提交「变更提案」，但你永远不能直接修改任何业务数据。\n"
+            . "2) 只有在用户本轮对话中明确提出了修改/新建/删除/审核/延期的意图时，才可以调用 Propose* 工具；"
+            . "用户只是提问、分析、汇报时，绝对不要主动调用。\n"
+            . "3) 调用前如信息不全（如缺任务 ID、缺延期天数、缺标题），先向用户询问，不要猜测填充。\n"
+            . "4) Propose* 工具返回的是「待确认提案」，此时数据尚未变更。你必须在回复中明确告诉用户："
+            . "变更尚未生效，需本人到「AI 授权中心」确认，并给出工具返回的确认地址。\n"
+            . "5) 用户问及变更进展时，用 ListMyProposals 查询状态，不要凭记忆作答。\n"
+            . "6) 若工具返回「没有权限」，如实转达并说明原因，不要尝试绕过。";
     }
 
     /**
@@ -208,6 +223,13 @@ class AiService
             new QueryKnowledge,
             new QueryFiles,
             new QueryTodos,
+            // 变更类：只生成待确认提案，需用户本人在 AI 授权中心确认后才生效
+            new ProposeTaskChange,
+            new ProposeTaskAudit,
+            new ProposeKnowledgeChange,
+            new ProposeKnowledgeDocChange,
+            new ProposeDepartmentFileChange,
+            new ListMyProposals,
         ];
     }
 
@@ -279,6 +301,12 @@ class AiService
             'QueryKnowledge' => new QueryKnowledge,
             'QueryFiles' => new QueryFiles,
             'QueryTodos' => new QueryTodos,
+            'ProposeTaskChange' => new ProposeTaskChange,
+            'ProposeTaskAudit' => new ProposeTaskAudit,
+            'ProposeKnowledgeChange' => new ProposeKnowledgeChange,
+            'ProposeKnowledgeDocChange' => new ProposeKnowledgeDocChange,
+            'ProposeDepartmentFileChange' => new ProposeDepartmentFileChange,
+            'ListMyProposals' => new ListMyProposals,
         ];
     }
 

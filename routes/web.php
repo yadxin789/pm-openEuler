@@ -27,6 +27,7 @@ use App\Http\Controllers\AdminTrashController;
 use App\Http\Controllers\MyTrashController;
 use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\AiController;
+use App\Http\Controllers\AiDelegationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WelcomeController::class, 'index'])->name('home');
@@ -54,6 +55,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/ai/chat', [AiController::class, 'chat'])->name('ai.chat');
     Route::post('/ai/ask', [AiController::class, 'ask'])->name('ai.ask')->middleware('throttle:ai');
     Route::post('/ai/clear', [AiController::class, 'clear'])->name('ai.clear');
+
+    // AI 授权中心（委托令牌签发 / AI 变更提案确认）
+    Route::get('/ai-delegation', [AiDelegationController::class, 'index'])->name('ai-delegation.index');
+    Route::post('/ai-delegation/tokens', [AiDelegationController::class, 'storeToken'])->name('ai-delegation.tokens.store');
+    Route::delete('/ai-delegation/tokens/{token}', [AiDelegationController::class, 'revokeToken'])->name('ai-delegation.tokens.revoke');
+    Route::post('/ai-delegation/proposals/{proposal}/confirm', [AiDelegationController::class, 'confirmProposal'])->name('ai-delegation.proposals.confirm');
+    Route::post('/ai-delegation/proposals/{proposal}/reject', [AiDelegationController::class, 'rejectProposal'])->name('ai-delegation.proposals.reject');
 
     // AI 会话管理（多会话 / 历史记录）
     Route::post('/ai/conversations', [AiController::class, 'storeConversation'])->name('ai.conversations.store');

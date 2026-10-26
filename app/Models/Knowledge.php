@@ -47,6 +47,13 @@ class Knowledge extends Model
 
     public function isEditableBy(?int $userId): bool
     {
-        return $this->admin_id == $userId || auth()->user()->isAdmin();
+        if (!$userId) {
+            return false;
+        }
+        if ($this->admin_id == $userId) {
+            return true;
+        }
+
+        return (bool) (User::find($userId)?->isAdmin() ?? false);
     }
 }

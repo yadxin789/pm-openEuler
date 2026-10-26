@@ -8,6 +8,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class File extends Model
 {
     use SoftDeletes;
+
+    /**
+     * 文件审核状态常量。
+     * 注意：历史上 canDownload() 误用 'accepted' 作判断，导致未审核文件对全体项目成员可下载，
+     * 现统一收敛到下列常量，避免再次出现字面量漂移。
+     */
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_REJECTED = 'rejected';
+
     protected $fillable = [
         'task_id', 'uploader_id', 'auditor_id', 'name', 'original_name',
         'path', 'size', 'mime_type', 'version', 'status', 'audit_time', 'audit_reason'
@@ -137,7 +147,7 @@ class File extends Model
         }
 
         // 其他项目成员：只有审核通过的文件才能下载
-        if ($this->status !== 'accepted') {
+        if ($this->status !== self::STATUS_APPROVED) {
             return false;
         }
 
