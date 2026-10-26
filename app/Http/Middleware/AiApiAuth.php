@@ -49,9 +49,11 @@ class AiApiAuth
                     'error' => '未授权：委托令牌无效、已吊销或已过期。',
                 ], 401);
             }
-        } elseif (!config('pm.ai_api.allow_anonymous_read', true)) {
+        } elseif (!config('pm.ai_api.allow_anonymous_read', false)) {
+            // 缺省即拒绝：即便配置缺失也按「必须携带委托令牌」处理，fail-closed
             return response()->json([
-                'error' => '未授权：本接口必须携带用户委托令牌（X-AI-Token）。',
+                'error' => '未授权：本接口必须携带用户委托令牌（X-AI-Token）。'
+                    . '请让授权人在「AI 授权中心」签发令牌后重试。',
             ], 401);
         }
 

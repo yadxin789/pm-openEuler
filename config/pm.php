@@ -22,7 +22,8 @@ return [
     'ai_api' => [
         // 是否允许不携带用户委托令牌的匿名只读调用。
         // 关闭后所有 /api/ai 接口都必须带 X-AI-Token，数据可见范围严格等同于该用户。
-        'allow_anonymous_read' => env('AI_API_ALLOW_ANONYMOUS_READ', true),
+        // 安全默认值：false（新部署即为「所有调用绑定具体用户」）。
+        'allow_anonymous_read' => env('AI_API_ALLOW_ANONYMOUS_READ', false),
 
         // 变更提案有效期（分钟）：超时未确认自动作废
         'proposal_ttl_minutes' => env('AI_PROPOSAL_TTL_MINUTES', 30),
