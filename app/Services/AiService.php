@@ -15,9 +15,11 @@ use App\Ai\Tools\QueryKnowledge;
 use App\Ai\Tools\QueryPmOverview;
 use App\Ai\Tools\QueryProjectDetail;
 use App\Ai\Tools\QueryProjects;
+use App\Ai\Tools\QueryResourceFiles;
 use App\Ai\Tools\QueryTasks;
 use App\Ai\Tools\QueryTodos;
 use App\Ai\Tools\QueryUsers;
+use App\Ai\Tools\SearchKnowledgeBase;
 use App\Ai\Tools\SearchKnowledgeBase;
 use App\Models\AiModel;
 use App\Models\AiProvider;
@@ -181,9 +183,12 @@ class AiService
      */
     public function pmInstructions(): string
     {
-        return "你是 PM 产品研发管理系统的智能助手。你可以调用工具查询项目、任务、用户、部门、知识库、文件、待办等真实数据。"
+        return "你是 PM 产品研发管理系统的智能助手。你可以调用工具查询项目、任务、用户、部门、知识库、资料文件、任务文件、待办等真实数据。"
             . "回答用户问题时请用简洁的中文。如果问题需要数据，先调用对应工具，再基于工具返回的结果作答，不要编造数据。"
-            . "所有数字、项目名、任务名必须来自工具返回结果。\n\n"
+            . "所有数字、项目名、任务名必须来自工具返回结果。"
+            . "查询资料时务必覆盖以下数据源：项目(QueryProjects/QueryProjectDetail)、任务(QueryTasks)、知识库(QueryKnowledge/SearchKnowledgeBase)、"
+            . "任务文件(QueryFiles)、部门资料文件库(QueryResourceFiles，含模板/规格书/认证文件等)、待办(QueryTodos)。"
+            . "当用户询问某个资料、文件、制度、规格时，先用关键词检索所有相关工具，不要只查一个数据源就说没有。\n\n"
             . "【变更类操作的硬性规则】\n"
             . "1) 你有权调用 Propose* 系列工具提交「变更提案」，但你永远不能直接修改任何业务数据。\n"
             . "2) 只有在用户本轮对话中明确提出了修改/新建/删除/审核/延期的意图时，才可以调用 Propose* 工具；"
@@ -232,6 +237,8 @@ class AiService
             new QueryDepartments,
             new QueryKnowledge,
             new QueryFiles,
+            new QueryResourceFiles,
+            new SearchKnowledgeBase,
             new QueryTodos,
             // 变更类：只生成待确认提案，需用户本人在 AI 授权中心确认后才生效
             new ProposeTaskChange,
