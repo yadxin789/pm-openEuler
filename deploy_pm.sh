@@ -48,11 +48,32 @@ firewall-cmd --permanent --add-service=http 2>/dev/null || true
 firewall-cmd --permanent --add-service=https 2>/dev/null || true
 firewall-cmd --reload 2>/dev/null || true
 
-# ---- 4. 启动 MySQL ----
-echo "[4/8] 启动 MariaDB..."
+# ---- 4. 配置并启动 MySQL（数据目录指向 /data/mysql）----
+echo "[4/8] 配置 MariaDB 数据目录..."
+
+# 先把 MySQL 数据目录迁移到 /data/mysql
+# 如果 /data/mysql 已有数据（从备份恢复），直接配置 my.cnf
+# 如果没有，初始化一个空库
+MYSQL_OLD="/var/lib/mysql"
+mkdir -p "$DATA_DIR/mysql"
+
+# 配置 my.cnf 指向 /data/mysql
+if ! grep -q "datadir=$DATA_DIR/mysql" /etc/my.cnf; then
+    sed -i "s|^datadir=.*|datadir=$DATA_DIR/mysql|" /etc/my.cnf
+    # 如果没有 datadir 行，追加
+    grep -q "datadir" /etc/my.cnf || echo "datadir=$DATA_DIR/mysql" >> /etc/my.cnf
+fi
+
+# 如果旧数据目录有数据且新目录为空，迁移过去
+if [ -d "$MYSQL_OLD/mysql" ] && [ -z "$(ls -A $DATA_DIR/mysql 2>/dev/null)" ]; then
+    echo "  迁移 MySQL 数据到 $DATA_DIR/mysql..."
+    systemctl stop mariadb 2>/dev/null || true
+    rsync -a "$MYSQL_OLD/" "$DATA_DIR/mysql/"
+    chown -R mysql:mysql "$DATA_DIR/mysql"
+fi
+
 systemctl enable --now mariadb
-# 如果数据目录已从备份恢复，这里会自动识别
-if [ -d "$MYSQL_DATA/mysql" ]; then
+if [ -d "$DATA_DIR/mysql/mysql" ]; then
     echo "  检测到已有 MySQL 数据目录"
 else
     echo "  初始化 MySQL（空库）"
@@ -70,7 +91,9 @@ fi
 
 # ---- 5. 创建数据目录结构 ----
 echo "[5/8] 创建数据目录..."
+# /data/pm-storage 对应 Laravel 的 storage/app/
 mkdir -p "$DATA_DIR/pm-storage"
+# /data/mysql 对应 MySQL 数据目录
 mkdir -p "$DATA_DIR/mysql"
 
 # ---- 6. 恢复 PM 文件 ----
@@ -91,12 +114,30 @@ fi
 cd "$PM_DIR"
 composer install --no-dev --optimize-autoloader --no-interaction
 
-# 恢复 storage（从备份解压到 /data/pm-storage，再软链接）
-if [ -d "$DATA_DIR/pm-storage" ] && [ "$(ls -A $DATA_DIR/pm-storage 2>/dev/null)" ]; then
-    echo "  恢复 storage 到 $DATA_DIR/pm-storage"
-    rm -rf "$PM_DIR/storage"
-    ln -s "$DATA_DIR/pm-storage" "$PM_DIR/storage"
+# ===== 方案C：只隔离 storage/app，不隔离整个 storage =====
+# storage/ 目录结构：
+#   storage/app/       ← 用户上传文件，软链接到 /data/pm-storage（大数据）
+#   storage/framework/ ← 缓存/session/视图编译，留系统盘（几MB）
+#   storage/logs/      ← 日志，留系统盘（会轮转）
+echo "  配置 storage/app 软链接到 $DATA_DIR/pm-storage..."
+# 确保 storage/framework 和 storage/logs 存在
+mkdir -p "$PM_DIR/storage/framework/cache/data"
+mkdir -p "$PM_DIR/storage/framework/sessions"
+mkdir -p "$PM_DIR/storage/framework/views"
+mkdir -p "$PM_DIR/storage/logs"
+
+# 如果 storage/app 还是真实目录，先把里面的内容迁移到 /data/pm-storage
+if [ -d "$PM_DIR/storage/app" ] && [ ! -L "$PM_DIR/storage/app" ]; then
+    echo "  迁移现有 storage/app 内容到 $DATA_DIR/pm-storage..."
+    rsync -a "$PM_DIR/storage/app/" "$DATA_DIR/pm-storage/"
+    rm -rf "$PM_DIR/storage/app"
 fi
+
+# 创建软链接：storage/app -> /data/pm-storage
+if [ ! -L "$PM_DIR/storage/app" ]; then
+    ln -s "$DATA_DIR/pm-storage" "$PM_DIR/storage/app"
+fi
+echo "  $PM_DIR/storage/app -> $DATA_DIR/pm-storage"
 
 # 配置 .env
 if [ ! -f "$PM_DIR/.env" ]; then
@@ -153,10 +194,11 @@ echo " 部署完成！"
 echo "=========================================="
 echo " PM 地址: https://192.168.2.20"
 echo " 数据分区: $DATA_DIR"
-echo " Storage: $PM_DIR/storage -> $DATA_DIR/pm-storage"
-echo ""
+echo " Storage: $PM_DIR/storage/app -> $DATA_DIR/pm-storage"
+echo " MySQL:   $MYSQL_DATA -> $DATA_DIR/mysql"
+echo "=========================================="
 echo " 如果是全新安装，还需："
 echo "   1. mysql -u root -p < 备份的数据库.sql"
 echo "   2. php artisan migrate --force"
-echo "   3. 导入备份的 storage 到 $DATA_DIR/pm-storage"
+echo "   3. 导入备份的 storage 内容到 $DATA_DIR/pm-storage"
 echo "=========================================="

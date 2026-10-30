@@ -2,6 +2,7 @@
 #=============================================================
 # PM 系统重装前数据备份脚本
 # 在旧系统上执行，备份到 /tmp/pm-backup/ 或外接U盘
+# 方案C：只备份 storage/app（用户上传文件）和 MySQL 数据
 #=============================================================
 set -e
 
@@ -9,9 +10,9 @@ BACKUP_DIR="/tmp/pm-backup-$(date +%Y%m%d)"
 echo "备份目录: $BACKUP_DIR"
 mkdir -p "$BACKUP_DIR"
 
-# 1. 备份 PM 上传文件
-echo "[1/3] 备份 storage..."
-tar czf "$BACKUP_DIR/storage.tar.gz" -C /var/www/pm storage/
+# 1. 备份 PM 上传文件（只备份 storage/app，不备份 framework/logs）
+echo "[1/3] 备份 storage/app（用户上传文件）..."
+tar czf "$BACKUP_DIR/pm-storage.tar.gz" -C /var/www/pm/storage app/
 
 # 2. 备份数据库
 echo "[2/3] 备份数据库..."
