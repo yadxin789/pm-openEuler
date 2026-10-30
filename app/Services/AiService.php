@@ -20,7 +20,6 @@ use App\Ai\Tools\QueryTasks;
 use App\Ai\Tools\QueryTodos;
 use App\Ai\Tools\QueryUsers;
 use App\Ai\Tools\SearchKnowledgeBase;
-use App\Ai\Tools\SearchKnowledgeBase;
 use App\Models\AiModel;
 use App\Models\AiProvider;
 use App\Models\AiSetting;
