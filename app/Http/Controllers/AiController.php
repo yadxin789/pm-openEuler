@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Ai\Tools\ListWorkspaceFiles;
+use App\Ai\Tools\ReadWorkspaceFile;
 use App\Models\AiAttachment;
 use App\Models\AiConversation;
 use App\Models\AiDocTemplate;
@@ -11,6 +13,8 @@ use App\Models\AiProvider;
 use App\Models\AiSetting;
 use App\Models\AiSkill;
 use App\Services\AiService;
+use App\Services\AiWorkspaceService;
+use App\Services\DocumentTextExtractorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
@@ -126,7 +130,7 @@ class AiController extends Controller
             'model_id' => 'nullable|integer',
             'skill' => 'nullable|string|max:100',
             'images.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,bmp,webp|max:10240',
-            'files.*' => 'nullable|file|max:20480',
+            'files.*' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,xlsm,ods,ppt,pptx,zip,txt,md,csv,json,xml,log,yaml,yml,ini,sql,html,htm,odt|max:20480',
         ]);
 
         $message = trim((string) $request->input('message', ''));
@@ -155,6 +159,18 @@ class AiController extends Controller
         }
         $tools = $skill ? $ai->toolsForNames($skill->config['tools'] ?? []) : null;
         $extraInstructions = $skill ? ($skill->description ?: null) : null;
+
+        // 注入会话工作区工具：让 AI 能浏览/读取已解压的 ZIP 文件内容
+        $workspaceTools = [
+            new ListWorkspaceFiles($conversation->id),
+            new ReadWorkspaceFile($conversation->id),
+        ];
+        if (is_array($tools)) {
+            $tools = array_merge($tools, $workspaceTools);
+        } else {
+            // 无技能限定 = 全部 PM 工具 + 工作区工具
+            $tools = array_merge($ai->pmTools(), $workspaceTools);
+        }
 
         // 处理附件：入库 + 生成可直接投喂 AI 的内容
         [$attachmentMeta, $aiAttachments, $fileContext, $notes] = $this->handleUploads($request, $conversation, $ai);
@@ -516,8 +532,10 @@ class AiController extends Controller
             if (!$file || !$file->isValid()) {
                 continue;
             }
-            $path = $file->storeAs($dir, Str::random(16) . '.' . $file->getClientOriginalExtension(), 'ai_chat');
-            $text = $this->extractText($file->getRealPath(), $file->getClientOriginalExtension());
+            $ext = strtolower($file->getClientOriginalExtension());
+            $path = $file->storeAs($dir, Str::random(16) . '.' . $ext, 'ai_chat');
+            $realPath = $file->getRealPath();
+            $text = $this->extractText($realPath, $ext);
 
             $attachment = AiAttachment::create([
                 'conversation_id' => $conversation->id,
@@ -540,7 +558,20 @@ class AiController extends Controller
                 'download_url' => route('ai.attachments.download', $attachment->id),
             ];
 
-            if ($text !== '') {
+            // ZIP / 压缩包：自动解压到会话工作区，AI 可通过工具浏览
+            if ($ext === 'zip') {
+                $workspace = app(AiWorkspaceService::class);
+                [$ok, $result] = $workspace->extractZip($conversation->id, $realPath, $file->getClientOriginalName());
+                if ($ok) {
+                    $contextParts[] = "=== 压缩包：{$attachment->original_name} ===";
+                    $contextParts[] = "已自动解压到会话工作区（{$result}）。"
+                        . "你可以使用 ListWorkspaceFiles 工具查看解压后的文件列表，"
+                        . "使用 ReadWorkspaceFile 工具读取其中某个文件的内容。"
+                        . "请告诉用户压缩包已解压，你可以浏览其中的文件。";
+                } else {
+                    $unsupportedNames[] = $attachment->original_name . '（解压失败：' . $result . '）';
+                }
+            } elseif ($text !== '') {
                 $contextParts[] = "=== 文件：{$attachment->original_name} ===";
                 $contextParts[] = mb_substr($text, 0, 20000);
             } else {
@@ -561,24 +592,19 @@ class AiController extends Controller
     }
 
     /**
-     * 抽取纯文本文件内容，非文本类型返回空串
+     * 抽取文件文本内容（委托给 DocumentTextExtractorService）
+     *
+     * 支持：txt/md/csv/json/xml/log/yaml/sql/html 等纯文本，
+     *      pdf（smalot/pdfparser 或 pdftotext），
+     *      docx（OOXML 解压），doc（antiword），
+     *      xlsx/xls/xlsm/ods（phpspreadsheet），
+     *      pptx（OOXML 解压），odt。
+     *
+     * 无法解析的格式返回空串，由上层标记为「暂不支持自动解析」。
      */
     protected function extractText(string $realPath, string $extension): string
     {
-        $allowed = ['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'log', 'yaml', 'yml', 'ini', 'sql', 'html', 'htm'];
-        if (!in_array(strtolower($extension), $allowed, true)) {
-            return '';
-        }
-        if (!is_file($realPath) || filesize($realPath) > 5 * 1024 * 1024) {
-            return '';
-        }
-        $content = @file_get_contents($realPath);
-        if ($content === false || $content === '') {
-            return '';
-        }
-        $content = mb_convert_encoding($content, 'UTF-8', ['UTF-8', 'GBK', 'GB18030', 'BIG-5', 'ISO-8859-1']);
-        // 去掉二进制乱码：保留大部分可打印字符即可
-        return trim(preg_replace('/[^\P{C}\t\r\n]/u', '', $content) ?? '');
+        return app(DocumentTextExtractorService::class)->extract($realPath, $extension);
     }
 
     /**
@@ -609,6 +635,9 @@ class AiController extends Controller
             Storage::disk('ai_chat')->delete($attachment->path);
         }
         AiAttachment::where('conversation_id', $conversation->id)->delete();
+
+        // 同时清理会话工作区（ZIP 解压的临时文件）
+        app(AiWorkspaceService::class)->cleanup($conversation->id);
     }
 
     protected function assertOwner(AiConversation $conversation): void
