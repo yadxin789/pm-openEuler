@@ -35,21 +35,22 @@ if ! mountpoint -q "$DATA_DIR"; then
 fi
 
 # ---- 2. 安装基础软件包 ----
-echo "[2/8] 安装系统依赖..."
+echo "[2/9] 安装系统依赖..."
 dnf install -y php php-fpm php-mysqlnd php-mbstring php-xml php-zip php-gd \
     php-bcmath php-fileinfo php-curl php-pdo php-json \
-    nginx mariadb-server mariadb \
+    httpd mariadb-server mariadb \
     git composer poppler-utils \
-    zip unzip curl
+    zip unzip curl openvpn
 
 # ---- 3. 配置防火墙 ----
-echo "[3/8] 配置防火墙..."
+echo "[3/9] 配置防火墙..."
 firewall-cmd --permanent --add-service=http 2>/dev/null || true
 firewall-cmd --permanent --add-service=https 2>/dev/null || true
+firewall-cmd --permanent --add-port=1194/udp 2>/dev/null || true
 firewall-cmd --reload 2>/dev/null || true
 
 # ---- 4. 配置并启动 MySQL（数据目录指向 /data/mysql）----
-echo "[4/8] 配置 MariaDB 数据目录..."
+echo "[4/9] 配置 MariaDB 数据目录..."
 
 # 先把 MySQL 数据目录迁移到 /data/mysql
 # 如果 /data/mysql 已有数据（从备份恢复），直接配置 my.cnf
@@ -90,14 +91,14 @@ EOF
 fi
 
 # ---- 5. 创建数据目录结构 ----
-echo "[5/8] 创建数据目录..."
+echo "[5/9] 创建数据目录..."
 # /data/pm-storage 对应 Laravel 的 storage/app/
 mkdir -p "$DATA_DIR/pm-storage"
 # /data/mysql 对应 MySQL 数据目录
 mkdir -p "$DATA_DIR/mysql"
 
 # ---- 6. 恢复 PM 文件 ----
-echo "[6/8] 恢复 PM 应用..."
+echo "[6/9] 恢复 PM 应用..."
 if [ -d "$PM_DIR" ]; then
     echo "  $PM_DIR 已存在，git pull 更新"
     cd "$PM_DIR"
@@ -146,40 +147,57 @@ if [ ! -f "$PM_DIR/.env" ]; then
 fi
 
 # 目录权限
-chown -R nginx:nginx "$PM_DIR"
+chown -R apache:apache "$PM_DIR"
 chmod -R 775 "$PM_DIR/storage" "$PM_DIR/bootstrap/cache"
 
-# ---- 7. 配置 Nginx ----
-echo "[7/8] 配置 Nginx..."
-cat > /etc/nginx/conf.d/pm.conf <<'NGINX'
-server {
-    listen 80;
-    server_name 192.168.2.20;
-    root /var/www/pm/public;
-    index index.php;
+# ---- 7. 配置 Apache ----
+echo "[7/9] 配置 Apache..."
+cat > /etc/httpd/conf.d/pm.conf <<'APACHE'
+<VirtualHost *:80>
+    DocumentRoot /var/www/pm/public
+    <Directory /var/www/pm/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+    ErrorLog /var/log/httpd/pm-error.log
+    CustomLog /var/log/httpd/pm-access.log combined
+</VirtualHost>
+APACHE
 
-    client_max_body_size 100M;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php-fpm/www.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
-NGINX
-
-systemctl enable --now nginx
+systemctl enable --now httpd
 
 # ---- 8. 配置 PHP-FPM 并启动 ----
-echo "[8/8] 配置 PHP-FPM..."
-# 确保 php-fpm 以 nginx 用户运行
-sed -i 's/^user = .*/user = nginx/' /etc/php-fpm.d/www.conf
-sed -i 's/^group = .*/group = nginx/' /etc/php-fpm.d/www.conf
+echo "[8/9] 配置 PHP-FPM..."
+sed -i 's/^user = .*/user = apache/' /etc/php-fpm.d/www.conf
+sed -i 's/^group = .*/group = apache/' /etc/php-fpm.d/www.conf
 systemctl enable --now php-fpm
+
+# ---- 9. 配置 OpenVPN ----
+echo "[9/9] 配置 OpenVPN..."
+mkdir -p /etc/openvpn/server /var/log/openvpn
+if [ ! -f /etc/openvpn/server/server.conf ]; then
+    cat > /etc/openvpn/server/server.conf <<'OVPN'
+port 1194
+proto udp
+dev tun
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server.crt
+key /etc/openvpn/server.key
+dh /etc/openvpn/dh.pem
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/ipp.txt
+push "dhcp-option DNS 223.5.5.5"
+push "dhcp-option DNS 119.29.29.29"
+keepalive 10 120
+cipher AES-256-GCM
+persist-key
+persist-tun
+status /var/log/openvpn/status.log
+verb 3
+OVPN
+    echo "  注意：首次部署需手动生成 OpenVPN 证书（CA/server/dh），详见 README 6.4 节"
+fi
+systemctl enable --now openvpn-server@server 2>/dev/null || true
 
 # 清理 Laravel 缓存
 cd "$PM_DIR"
@@ -192,13 +210,16 @@ echo ""
 echo "=========================================="
 echo " 部署完成！"
 echo "=========================================="
-echo " PM 地址: https://192.168.2.20"
+echo " PM 地址: http://192.168.2.20"
 echo " 数据分区: $DATA_DIR"
 echo " Storage: $PM_DIR/storage/app -> $DATA_DIR/pm-storage"
 echo " MySQL:   $MYSQL_DATA -> $DATA_DIR/mysql"
+echo " OpenVPN: UDP 1194（远程办公）"
 echo "=========================================="
 echo " 如果是全新安装，还需："
 echo "   1. mysql -u root -p < 备份的数据库.sql"
 echo "   2. php artisan migrate --force"
 echo "   3. 导入备份的 storage 内容到 $DATA_DIR/pm-storage"
+echo "   4. 生成 OpenVPN 证书（见 README 6.4 节）"
+echo "   5. 配置 HTTPS 证书（见 README 6.5 节）"
 echo "=========================================="

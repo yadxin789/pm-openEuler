@@ -27,7 +27,10 @@
 - **企业微信**：WeCom 登录、消息、文件互通。
 - **组织与权限**：用户、部门、角色权限（RBAC）。
 - **日常办公**：待办、通知、站内信、私人消息。
-- **AI 智能助手（新增）**：智能问答、PM 数据洞察、自然语言生成文档。
+- **AI 智能助手**：智能问答、PM 数据洞察、自然语言生成文档。
+- **AI 文件解析（新增）**：AI 聊天支持上传 PDF / DOCX / XLSX / PPTX / ODT / TXT / MD / CSV 等格式，自动提取文本内容辅助设计。
+- **AI 会话工作区（新增）**：上传 ZIP 文件自动解压，AI 可列出目录、读取文件内容，辅助设计资料库查询；会话删除时自动清理临时文件。
+- **OpenVPN 远程办公（新增）**：自托管 VPN，员工在家通过 OpenVPN 客户端访问 PM 系统，无需第三方 SaaS 依赖。
 
 ---
 
@@ -40,6 +43,8 @@
 | 智能问答 | 对项目、任务、用户、部门、知识库等真实数据进行问答，可调用工具查询，不编造数据 |
 | PM 数据洞察 | 项目进度、逾期、任务完成情况、经营概览 |
 | 自然语言生成文档 | 用户用自然语言提供数据/参数，AI 依据**模板文件、范例文件、知识库、支援文件**自动生成可交付文档 |
+| AI 文件解析 | 上传 PDF/DOCX/XLSX/PPTX/ODT 等文件，AI 自动提取文本内容 |
+| AI 会话工作区 | 上传 ZIP 自动解压，AI 可浏览文件列表、读取文件内容 |
 | AI 数据 API | REST 接口，供 AI / 外部 Agent 全面调取 PM 数据 |
 
 ### 3.2 界面入口
@@ -188,7 +193,7 @@ curl http://host/api/ai/write/proposals/12 \
 
 `app/Ai/Tools/` 下共 17 个工具，供聊天 / 文档生成 Agent 调用。
 
-**查询类（11）**：`QueryPmOverview`、`QueryProjects`、`QueryProjectDetail`、`QueryTasks`、`QueryUsers`、`QueryDepartments`、`QueryKnowledge`、`QueryFiles`、`QueryTodos`、`GetDocTemplate`、`SearchKnowledgeBase`。
+**查询类（14）**：`QueryPmOverview`、`QueryProjects`、`QueryProjectDetail`、`QueryTasks`、`QueryUsers`、`QueryDepartments`、`QueryKnowledge`、`QueryFiles`、`QueryTodos`、`GetDocTemplate`、`SearchKnowledgeBase`、`QueryResourceFiles`、`ListWorkspaceFiles`、`ReadWorkspaceFile`。
 
 **变更类（6，只生成提案，不直接写库）**：
 
@@ -281,6 +286,37 @@ AI_API_KEY=                   # 外部调用 /api/ai/* 的访问密钥
 ```
 
 > 推荐在系统后台「AI 设置」界面配置提供商与 Key（持久化到 `ai_settings` 表），`.env` 仅为兜底默认值。
+
+### 6.4 远程办公（OpenVPN）
+
+服务器已部署 OpenVPN 2.6.9，用于员工在家远程访问 PM 系统。
+
+**服务端配置：**
+- 配置目录：`/etc/openvpn/server/server.conf`
+- 端口：UDP 1194
+- VPN 网段：10.8.0.0/24
+- 服务：`openvpn-server@server`（systemd）
+
+**生成客户端配置：**
+```bash
+ssh root@192.168.2.20 /usr/local/bin/gen_client.sh 张三
+# 生成 /etc/openvpn/张三.ovpn，发给员工
+```
+
+**员工使用：**
+1. 下载安装 [OpenVPN 客户端](https://openvpn.net/community-downloads/)
+2. 导入 `.ovpn` 文件
+3. 连接后访问 `https://192.168.2.20`
+
+**路由器端口转发：**
+- 外部端口：1194（UDP）
+- 内部 IP：192.168.2.20
+- 内部端口：1194（UDP）
+
+### 6.5 HTTPS 证书
+
+服务器使用自签名证书（带 IP SAN），部署在 Apache `/etc/httpd/ssl/`。
+Windows 用户首次访问时需导入证书信任：运行 `导入PM证书.bat`。
 
 ---
 
